@@ -1,0 +1,5 @@
+.DS_Store
+.playwright-cli/
+ASSET_PROMPTS.md
+output/
+tmp/

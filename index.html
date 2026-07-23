@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#080607">
+  <meta name="description" content="男性の悩みを4つの質問で整理する、ダークファンタジーRPG風の記事LPプロトタイプ。">
+  <title>MIDNIGHT COVENANT｜ABCクリニック記事LP PoC</title>
+  <link rel="icon" href="data:,">
+  <link rel="preload" href="assets/world/contract-chamber.webp" as="image" fetchpriority="high">
+  <link rel="preload" href="assets/character/succubus_FV_throne_v2.webp" as="image" fetchpriority="high">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app" id="app">
+    <canvas class="embers" id="embers" aria-hidden="true"></canvas>
+
+    <section class="title-screen" id="titleScreen" aria-labelledby="titleHeading">
+      <img
+        class="title-screen__background"
+        src="assets/world/contract-chamber.webp"
+        alt=""
+        width="941"
+        height="1672"
+      >
+      <div class="title-screen__vignette"></div>
+      <img
+        class="title-screen__character"
+        src="assets/character/succubus_FV_throne_v2.webp"
+        alt="玉座から契約へ誘う成人のサキュバス"
+        width="1086"
+        height="1448"
+      >
+      <div class="title-screen__scrim"></div>
+      <div class="title-screen__content">
+        <p class="eyebrow">ABC CLINIC × INTERACTIVE ARTICLE / PROTOTYPE</p>
+        <img
+          class="event-logo"
+          src="assets/world/midnight-covenant-event-logo-transparent-v1.webp"
+          alt="真夜中の契約書 MIDNIGHT COVENANT"
+          width="1774"
+          height="887"
+        >
+        <h1 class="sr-only" id="titleHeading">真夜中の契約書</h1>
+        <p class="title-copy__sub">誰にも言えない男の悩みを、<br>4つのクエストで整理する。</p>
+        <div class="title-dialogue">
+          <span class="title-dialogue__name">LILITH</span>
+          <p>「その悩み、私とだけ契約しない？」</p>
+        </div>
+        <button
+          class="start-button image-cta"
+          id="startButton"
+          type="button"
+          aria-label="秘密の契約を始める。所要時間 約2分"
+        >
+          <img
+            src="assets/ui/cta-start-v1.webp"
+            alt=""
+            width="1753"
+            height="722"
+          >
+        </button>
+        <p class="title-screen__notice">
+          成人向けテーマを含む体験型デモです。診断・予約・効果保証は行いません。
+        </p>
+      </div>
+    </section>
+
+    <section class="game" id="game" aria-hidden="true">
+      <header class="hud">
+        <div class="hud__chapter">
+          <span class="hud__label">CONTRACT</span>
+          <strong id="chapterLabel">PROLOGUE</strong>
+        </div>
+        <div class="hud__progress" aria-label="契約の進行状況">
+          <span class="hud__label">SEALS</span>
+          <div class="seal-dots" id="sealDots"></div>
+        </div>
+        <button
+          class="sound-button"
+          id="soundButton"
+          type="button"
+          aria-label="サウンドをオンにする"
+          aria-pressed="false"
+        >♪̸</button>
+      </header>
+
+      <div class="stage" id="stage">
+        <img
+          class="stage__background"
+          src="assets/world/contract-chamber.webp"
+          alt=""
+          width="941"
+          height="1672"
+        >
+        <div class="stage__backdrop"></div>
+        <div class="stage__seal" aria-hidden="true"></div>
+        <img
+          class="stage__character"
+          id="character"
+          src="assets/character/succubus_STANDEE_neutral_selected_v1.webp"
+          alt="案内役のリリス"
+          width="768"
+          height="1024"
+        >
+        <div class="stage__floor-glow" aria-hidden="true"></div>
+      </div>
+
+      <section class="dialogue" id="dialogue" aria-live="polite" aria-atomic="true">
+        <div class="dialogue__name">LILITH <small>契約の案内人</small></div>
+        <p class="dialogue__text" id="dialogueText"></p>
+      </section>
+
+      <section class="panel" id="panel" aria-live="polite"></section>
+    </section>
+
+    <section class="chapter-gate" id="chapterGate" aria-hidden="true">
+      <div class="chapter-gate__glow"></div>
+      <div class="chapter-gate__seal"></div>
+      <p class="chapter-gate__kicker" id="chapterGateKicker">SEAL I</p>
+      <h2 id="chapterGateTitle">秘密の輪郭</h2>
+      <p class="chapter-gate__status" id="chapterGateStatus">CONTRACT UPDATED</p>
+    </section>
+
+    <section class="map-screen" id="mapScreen" aria-hidden="true">
+      <img src="assets/world/quest-map.webp" alt="" width="941" height="1672">
+      <div class="map-screen__scrim"></div>
+      <div class="map-screen__content">
+        <p class="eyebrow">CONTRACT MAP</p>
+        <h2>契約は、半分まで進んだ。</h2>
+        <div class="map-nodes" id="mapNodes" aria-label="クエスト進行状況"></div>
+        <p>残る封印はあと2つ。<br>焦らなくていい。選ぶのは、あなたよ。</p>
+      </div>
+    </section>
+
+    <section class="boss-screen" id="bossScreen" aria-hidden="true">
+      <div class="boss-screen__flare"></div>
+      <p class="eyebrow">FINAL ENCOUNTER</p>
+      <h2>迷いの影</h2>
+      <p class="boss-screen__lead">倒すのは身体の悩みじゃない。<br>相談を止めていた、その迷いだけ。</p>
+      <div class="boss-portrait" id="bossPortrait">
+        <img
+          src="assets/world/hesitation-shadow.webp"
+          alt="黒い結晶に閉じ込められた迷いの影"
+          width="1254"
+          height="1254"
+        >
+        <div class="boss-portrait__cracks" aria-hidden="true"></div>
+      </div>
+      <div class="boss-meter" aria-label="迷いの影の残存率">
+        <div class="boss-meter__labels">
+          <strong>SHADOW OF HESITATION</strong>
+          <span id="bossPercent">100%</span>
+        </div>
+        <div class="boss-meter__track">
+          <div class="boss-meter__fill" id="bossFill"></div>
+        </div>
+      </div>
+      <button
+        class="ritual-button image-cta"
+        id="ritualButton"
+        type="button"
+        aria-label="契約印を解放する"
+      >
+        <img
+          src="assets/ui/cta-ritual-v1.webp"
+          alt=""
+          width="1747"
+          height="637"
+        >
+      </button>
+    </section>
+
+    <section class="result-screen" id="resultScreen" aria-hidden="true">
+      <img
+        class="result-screen__frame"
+        src="assets/world/consultation-frame.webp"
+        alt=""
+        width="1024"
+        height="1536"
+      >
+      <div class="result-screen__content">
+        <p class="eyebrow">CONTRACT REWARD / CONSULTATION NOTE</p>
+        <h2>あなた専用の相談メモ</h2>
+        <p class="result-screen__intro">
+          4つの回答を、相談時に伝えやすい形へ整理しました。
+        </p>
+        <dl class="answer-summary" id="answerSummary"></dl>
+        <div class="official-facts">
+          <div class="official-facts__title">
+            <span>OFFICIAL CHECK</span>
+            <strong>相談前に確認できること</strong>
+          </div>
+          <ul>
+            <li>ABCクリニック公式サイトでは、包茎治療・長茎術・増大術・早漏防止治療などを案内しています。</li>
+            <li>公式の治療費一覧は、対象治療について施術費用・麻酔代・術後の薬代を含む表記です。</li>
+            <li>実際の治療内容・費用は状態により異なり、医師の診察・診断が必要です。</li>
+          </ul>
+        </div>
+        <a
+          class="primary-cta image-cta"
+          href="https://abc-clinic.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="ABCクリニック公式サイトで情報を確認する。別タブで開きます"
+        >
+          <img
+            src="assets/ui/cta-official-v1.webp"
+            alt=""
+            width="1937"
+            height="586"
+          >
+        </a>
+        <button class="restart-button" id="restartButton" type="button">もう一度、回答を整理する</button>
+        <p class="result-screen__note">
+          この結果は診断ではなく、相談内容を整理するためのメモです。<br>
+          掲載根拠：ABCクリニック公式サイト・治療費一覧（2026年7月23日確認）
+        </p>
+      </div>
+    </section>
+
+    <div class="flash" id="flash" aria-hidden="true"></div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
