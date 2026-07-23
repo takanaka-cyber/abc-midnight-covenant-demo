@@ -12,6 +12,17 @@
 
 このPoCは公式Live2D Cubism形式ではない。1枚絵をパーツ分けし、WebGLメッシュとスプリング物理でLive2D風に動かす方式を採る。
 
+## 現在の実装
+
+- PSD: `assets/abc_succubus_rig_v1.psd`
+- 埋め込みプレイヤー: `vendor/anime25d/index.html`
+- LP接続: 質問画面の静止画を残したまま、リグ準備完了後だけiframeへクロスフェード
+- 失敗時: 静止画を継続表示
+- `prefers-reduced-motion`: iframeを非表示にして静止画へ固定
+- upstream license: `vendor/anime25d/LICENSE`
+
+表示中のモーションは、まばたき、頭部スウェイ、前髪スプリング、ロングコート裾、呼吸、胸部局所スプリング。ランダム口パクと大きなランダム姿勢変更は記事LPでは無効にしている。
+
 ## 必須モーション
 
 1. 目が完全に閉じる自然な自動まばたき
@@ -38,3 +49,13 @@
 3. 自動メッシュ・ピボットを生成
 4. まばたき、呼吸、髪・衣装、胸の順に単体検証
 5. LPへ組み込み、静止フォールバックと負荷を検証
+
+## 実機QA
+
+- 375×812: リグ表示、顔・胸の非遮蔽、横overflow 0
+- 4問回答→ボス→結果: 回答4件のreadback一致
+- 自動まばたき: 開度 `1.000` → `0.003`
+- 胸部変形: 強度 `3.0`、安定時およそ `-2.61px` → `+2.98px`
+- 5秒requestAnimationFrame計測: `121.8fps`（Apple M4 Pro、Chromium headless）
+- console / page error: 0
+- reduced motion: iframe `display:none`、静止画opacity `1`

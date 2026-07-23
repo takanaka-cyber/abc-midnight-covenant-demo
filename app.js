@@ -78,11 +78,33 @@
   const panel = qs("#panel");
   const dialogueText = qs("#dialogueText");
   const character = qs("#character");
+  const characterRig = qs("#characterRig");
+  const stage = qs("#stage");
   const chapterLabel = qs("#chapterLabel");
   const chapterGate = qs("#chapterGate");
   const mapScreen = qs("#mapScreen");
   const bossScreen = qs("#bossScreen");
   const resultScreen = qs("#resultScreen");
+  let rigReady = false;
+
+  function postToRig(message) {
+    if (!rigReady || !characterRig?.contentWindow || reduceMotion.matches) return;
+    characterRig.contentWindow.postMessage(message, window.location.origin);
+  }
+
+  window.addEventListener("message", (event) => {
+    if (
+      event.origin !== window.location.origin
+      || event.source !== characterRig?.contentWindow
+      || !event.data
+    ) return;
+
+    if (event.data.type === "anime25d-ready" && !reduceMotion.matches) {
+      rigReady = true;
+      stage.classList.add("is-rig-ready");
+      postToRig({ type: "anime25d-fit" });
+    }
+  });
 
   function createProgress() {
     const sealDots = qs("#sealDots");
@@ -112,6 +134,7 @@
 
   function setExpression(key) {
     const next = ASSETS[key] || ASSETS.neutral;
+    postToRig({ type: "anime25d-expression", name: key });
     if (character.getAttribute("src") === next) return;
     character.classList.add("is-swapping");
     window.setTimeout(() => {
@@ -317,6 +340,7 @@
     titleScreen.setAttribute("aria-hidden", "true");
     game.classList.add("is-active");
     game.setAttribute("aria-hidden", "false");
+    window.setTimeout(() => postToRig({ type: "anime25d-fit" }), 0);
     playTone("clear");
     window.setTimeout(() => {
       titleScreen.hidden = true;
