@@ -7,10 +7,10 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const ASSETS = {
-    neutral: "assets/character/succubus_STANDEE_neutral_selected_v1.webp",
-    smile: "assets/character/succubus_STANDEE_smile_selected_v1.webp",
-    serious: "assets/character/succubus_STANDEE_serious_selected_v1.webp",
-    concerned: "assets/character/succubus_STANDEE_concerned_selected_v1.webp",
+    neutral: "assets/character/succubus_STANDEE_live2d_v4.webp",
+    smile: "assets/character/succubus_STANDEE_live2d_v4.webp",
+    serious: "assets/character/succubus_STANDEE_live2d_v4.webp",
+    concerned: "assets/character/succubus_STANDEE_live2d_v4.webp",
   };
 
   Object.values(ASSETS).forEach((src) => {

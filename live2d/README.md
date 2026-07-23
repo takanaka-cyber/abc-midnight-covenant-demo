@@ -12,9 +12,12 @@
 
 このPoCは公式Live2D Cubism形式ではない。1枚絵をパーツ分けし、WebGLメッシュとスプリング物理でLive2D風に動かす方式を採る。
 
-## 現在の実装
+## 現在の実装（v4）
 
-- PSD: `assets/abc_succubus_rig_v1.psd`
+- 元立ち絵: `source/abc_succubus_live2d_master_v4.png`
+- 透過立ち絵: `source/abc_succubus_live2d_cutout_v4.png`
+- PSD: `assets/abc_succubus_rig_v4.psd`
+- 静止フォールバック: `../assets/character/succubus_STANDEE_live2d_v4.webp`
 - 埋め込みプレイヤー: `vendor/anime25d/index.html`
 - LP接続: 質問画面の静止画を残したまま、リグ準備完了後だけiframeへクロスフェード
 - 失敗時: 静止画を継続表示
@@ -53,9 +56,14 @@
 ## 実機QA
 
 - 375×812: リグ表示、顔・胸の非遮蔽、横overflow 0
-- 4問回答→ボス→結果: 回答4件のreadback一致
-- 自動まばたき: 開度 `1.000` → `0.003`
-- 胸部変形: 強度 `3.0`、安定時およそ `-2.61px` → `+2.98px`
-- 5秒requestAnimationFrame計測: `121.8fps`（Apple M4 Pro、Chromium headless）
-- console / page error: 0
+- PSD再合成: 可視領域IoU `1.0`、欠損 `0px`、余分 `0px`
+- 自動まばたき8秒計測: 開度 `1.000` → `0.00385`、閉眼サンプル8件
+- 胸部変形8秒計測: 強度 `3.0`、`-7.23px` → `+6.22px`
+- runtime warning: 0、runtime part: 15
+- console / page error: 0（faviconのdata URI化後）
 - reduced motion: iframe `display:none`、静止画opacity `1`
+- 4問回答→ボス→結果: 4回答のreadback一致、横overflow 0
+
+証跡は `qa/live2d-v4-mobile-motion.webm`、`qa/live2d-v4-mobile-open.png`、`qa/live2d-v4-mobile-closed.png`、`qa/live2d-v4-runtime-stress.png`、`qa/live2d-v4-reduced-motion.png`。
+
+強い姿勢入力（angle X `0.65` / Y `-0.5` / Z `0.65` / body `0.7`）でも、顔・首・角・胸元に背景露出やパーツずれがないことを目視確認した。

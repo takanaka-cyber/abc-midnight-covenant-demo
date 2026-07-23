@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>Anime2.5DRig — PSDドロップで動くアバター</title>
 <script>
 if(new URLSearchParams(location.search).has('embed')){
@@ -986,7 +987,7 @@ async function initEmbeddedPlayer(){
   setSlider('eyeScaleL',1);
   setSlider('eyeScaleR',1);
   try{
-    const model=params.get('model')||'../../assets/abc_succubus_rig_v3.psd';
+    const model=params.get('model')||'../../assets/abc_succubus_rig_v4.psd';
     const response=await fetch(model);
     if(!response.ok) throw new Error('model HTTP '+response.status);
     await loadPsdBuffer(await response.arrayBuffer());
