@@ -983,6 +983,8 @@ async function initEmbeddedPlayer(){
   setAutoState('talk',false,'tgTalk');
   setAutoState('phys',true,'tgPhys');
   setSlider('bust',parseFloat(params.get('bust')||'3.0'));
+  setSlider('eyeScaleL',0.62);
+  setSlider('eyeScaleR',0.62);
   try{
     const model=params.get('model')||'../../assets/abc_succubus_rig_v1.psd';
     const response=await fetch(model);
