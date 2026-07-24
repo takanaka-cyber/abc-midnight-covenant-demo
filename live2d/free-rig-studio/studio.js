@@ -6,6 +6,12 @@
   var overlayCanvas = document.getElementById('overlayCanvas');
   var overlay = overlayCanvas.getContext('2d');
   var stage = document.getElementById('stage');
+  var isEmbedded = new URLSearchParams(window.location.search).has('embed');
+  var embeddedExpression = {
+    eyeScaleL: 1,
+    eyeScaleR: 1,
+    mouthOpen: 0.06
+  };
   var model = null;
   var evaluator = null;
   var evaluated = null;
@@ -34,6 +40,38 @@
 
   function setStatus(message) {
     document.getElementById('statusText').textContent = message;
+  }
+
+  function fitEmbeddedCanvas() {
+    if (!isEmbedded || !model) return;
+    var stageWidth = Math.max(1, stage.clientWidth);
+    var stageHeight = Math.max(1, stage.clientHeight);
+    var scale = Math.max(
+      stageWidth / model.canvas.width,
+      stageHeight / model.canvas.height
+    );
+    var width = Math.ceil(model.canvas.width * scale);
+    var height = Math.ceil(model.canvas.height * scale);
+    renderCanvas.style.width = overlayCanvas.style.width = width + 'px';
+    renderCanvas.style.height = overlayCanvas.style.height = height + 'px';
+  }
+
+  function applyEmbeddedExpression(name) {
+    var expressions = {
+      neutral: { eyeScaleL: 1, eyeScaleR: 1, mouthOpen: 0.06 },
+      concerned: { eyeScaleL: 0.86, eyeScaleR: 0.86, mouthOpen: 0.12 },
+      serious: { eyeScaleL: 0.76, eyeScaleR: 0.76, mouthOpen: 0.02 },
+      smile: { eyeScaleL: 0.9, eyeScaleR: 0.9, mouthOpen: 0.28 }
+    };
+    embeddedExpression = expressions[name] || expressions.neutral;
+    if (!model) return;
+    parameterValues.MouthOpen = embeddedExpression.mouthOpen;
+    evaluateAndRender();
+  }
+
+  function notifyEmbedded(type, detail) {
+    if (!isEmbedded || window.parent === window) return;
+    window.parent.postMessage(Object.assign({ type: type }, detail || {}), window.location.origin);
   }
 
   function slug(value) {
@@ -154,6 +192,67 @@
     };
   }
 
+  function meshOffsets(mesh, width, height, callback) {
+    var safeWidth = Math.max(1, Number(width) || 1);
+    var safeHeight = Math.max(1, Number(height) || 1);
+    var result = [];
+    mesh.vertices.forEach(function (vertex) {
+      var x = Number(vertex[0]) / safeWidth;
+      var y = Number(vertex[1]) / safeHeight;
+      var offset = callback(x, y);
+      result.push(Number(offset[0] || 0), Number(offset[1] || 0));
+    });
+    return result;
+  }
+
+  function rotationRigNode(id, name, parentId, pivotX, pivotY, bindings) {
+    return {
+      id: id,
+      name: name,
+      type: 'rotation',
+      parentId: parentId,
+      transform: {
+        x: 0,
+        y: 0,
+        pivotX: pivotX,
+        pivotY: pivotY,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        opacity: 1,
+        drawOrder: 0
+      },
+      bindings: bindings || {}
+    };
+  }
+
+  function warpRigNode(id, name, parentId, x, y, width, height, columns, rows, bindings) {
+    return {
+      id: id,
+      name: name,
+      type: 'warp',
+      parentId: parentId,
+      transform: {
+        x: 0,
+        y: 0,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        opacity: 1,
+        drawOrder: 0
+      },
+      warp: {
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        columns: columns,
+        rows: rows
+      },
+      bindings: bindings || {}
+    };
+  }
+
   function createSampleModel(rig, sourceName, sourceHierarchy) {
     var usedIds = {};
     var textures = [];
@@ -171,117 +270,389 @@
     var chestHeight = Math.min(rig.canvas.h - chestY, (face.y1 - face.y0) * 1.6);
     var chestX = Math.max(0, anchors.neckPivot.cx - (face.x1 - face.x0) * 0.9);
     var chestWidth = Math.min(rig.canvas.w - chestX, (face.x1 - face.x0) * 1.8);
+    var faceWidth = face.x1 - face.x0;
+    var torsoX = Math.max(0, anchors.neckPivot.cx - faceWidth * 1.15);
+    var torsoY = Math.max(0, face.y1 - faceWidth * 0.35);
+    var torsoWidth = Math.min(rig.canvas.w - torsoX, faceWidth * 2.3);
+    var torsoHeight = Math.min(rig.canvas.h - torsoY, faceWidth * 2.35);
+    var hipX = Math.max(0, anchors.neckPivot.cx - faceWidth * 1.3);
+    var hipY = Math.max(0, face.y1 + faceWidth * 0.48);
+    var hipWidth = Math.min(rig.canvas.w - hipX, faceWidth * 2.6);
+    var hipHeight = Math.min(rig.canvas.h - hipY, rig.canvas.h * 0.62);
+    var shoulderY = face.y1 - faceWidth * 0.12;
+    var waistY = face.y1 + faceWidth * 1.12;
 
-    nodes.push({
-      id: 'root_rotation',
-      name: 'Root rotation',
-      type: 'rotation',
-      parentId: null,
-      transform: {
-        x: 0, y: 0, pivotX: anchors.bodyPivot.cx, pivotY: anchors.bodyPivot.cy,
-        rotation: 0, scaleX: 1, scaleY: 1, opacity: 1, drawOrder: 0
-      },
-      bindings: {
-        BodyAngle: binding([-1, 0, 1], [
-          { rotation: -2.8 }, { rotation: 0 }, { rotation: 2.8 }
+    nodes.push(rotationRigNode(
+      'root_rotation',
+      'Root rotation',
+      null,
+      anchors.bodyPivot.cx,
+      anchors.bodyPivot.cy,
+      {
+        BodyAngleZ: binding([-1, 0, 1], [
+          { rotation: -3.4 }, { rotation: 0 }, { rotation: 3.4 }
         ])
       }
-    });
-    nodes.push({
-      id: 'body_warp',
-      name: 'Body warp',
-      type: 'warp',
-      parentId: 'root_rotation',
-      transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1, opacity: 1, drawOrder: 0 },
-      warp: { x: 0, y: 0, width: rig.canvas.w, height: rig.canvas.h, columns: 2, rows: 3 },
-      bindings: {
-        Breath: binding([0, 1], [
-          { warpOffsets: zeroGrid(2, 3) },
+    ));
+    nodes.push(warpRigNode(
+      'body_warp',
+      'Whole body warp',
+      'root_rotation',
+      0,
+      0,
+      rig.canvas.w,
+      rig.canvas.h,
+      3,
+      5,
+      {
+        BodyAngleX: binding([-1, 0, 1], [
           {
-            warpOffsets: gridOffsets(2, 3, function (x, y) {
-              var upperBody = Math.max(0, 1 - Math.abs(y - 0.46) * 3.4);
-              return [(x - 0.5) * upperBody * 2.4, -upperBody * 3.2];
+            warpOffsets: gridOffsets(3, 5, function (x, y) {
+              var upper = Math.pow(Math.max(0, 1 - y), 1.18);
+              return [-11 * upper, (x - 0.5) * upper * 3.2];
+            })
+          },
+          { warpOffsets: zeroGrid(3, 5) },
+          {
+            warpOffsets: gridOffsets(3, 5, function (x, y) {
+              var upper = Math.pow(Math.max(0, 1 - y), 1.18);
+              return [11 * upper, -(x - 0.5) * upper * 3.2];
+            })
+          }
+        ]),
+        BodyAngleY: binding([-1, 0, 1], [
+          {
+            warpOffsets: gridOffsets(3, 5, function (x, y) {
+              var upper = Math.pow(Math.max(0, 1 - y), 1.35);
+              return [(x - 0.5) * upper * -5.5, upper * -5.5];
+            })
+          },
+          { warpOffsets: zeroGrid(3, 5) },
+          {
+            warpOffsets: gridOffsets(3, 5, function (x, y) {
+              var upper = Math.pow(Math.max(0, 1 - y), 1.35);
+              return [(x - 0.5) * upper * 5.5, upper * 5.5];
+            })
+          }
+        ]),
+        Breath: binding([0, 1], [
+          { warpOffsets: zeroGrid(3, 5) },
+          {
+            warpOffsets: gridOffsets(3, 5, function (x, y) {
+              var upperBody = Math.max(0, 1 - Math.abs(y - 0.31) * 5.2);
+              return [(x - 0.5) * upperBody * 3.2, -upperBody * 3.8];
             })
           }
         ])
       }
-    });
-    nodes.push({
-      id: 'head_rotation',
-      name: 'Head rotation',
-      type: 'rotation',
-      parentId: 'body_warp',
-      transform: {
-        x: 0, y: 0, pivotX: anchors.neckPivot.cx, pivotY: anchors.neckPivot.cy,
-        rotation: 0, scaleX: 1, scaleY: 1, opacity: 1, drawOrder: 0
-      },
-      bindings: {
-        AngleZ: binding([-1, 0, 1], [
-          { rotation: -5.5 }, { rotation: 0 }, { rotation: 5.5 }
+    ));
+    nodes.push(warpRigNode(
+      'hip_warp',
+      'Hip and lower body warp',
+      'body_warp',
+      hipX,
+      hipY,
+      hipWidth,
+      hipHeight,
+      3,
+      4,
+      {
+        HipShift: binding([-1, 0, 1], [
+          {
+            warpOffsets: gridOffsets(3, 4, function (x, y) {
+              var influence = Math.pow(Math.max(0, 1 - y), 1.4);
+              return [-7 * influence, (x - 0.5) * influence * 2.2];
+            })
+          },
+          { warpOffsets: zeroGrid(3, 4) },
+          {
+            warpOffsets: gridOffsets(3, 4, function (x, y) {
+              var influence = Math.pow(Math.max(0, 1 - y), 1.4);
+              return [7 * influence, -(x - 0.5) * influence * 2.2];
+            })
+          }
+        ]),
+        BodyAngleX: binding([-1, 0, 1], [
+          {
+            warpOffsets: gridOffsets(3, 4, function (x, y) {
+              return [2.4 * y, (x - 0.5) * y * -1.6];
+            })
+          },
+          { warpOffsets: zeroGrid(3, 4) },
+          {
+            warpOffsets: gridOffsets(3, 4, function (x, y) {
+              return [-2.4 * y, (x - 0.5) * y * 1.6];
+            })
+          }
         ])
       }
-    });
-    nodes.push({
-      id: 'head_warp',
-      name: 'Head XY warp',
-      type: 'warp',
-      parentId: 'head_rotation',
-      transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1, opacity: 1, drawOrder: 0 },
-      warp: { x: headX, y: headY, width: headWidth, height: headHeight, columns: columns, rows: rows },
-      bindings: {
+    ));
+    nodes.push(warpRigNode(
+      'torso_warp',
+      'Torso and shoulder warp',
+      'body_warp',
+      torsoX,
+      torsoY,
+      torsoWidth,
+      torsoHeight,
+      3,
+      3,
+      {
+        BodyAngleX: binding([-1, 0, 1], [
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              return [-7 * (1 - y * 0.45), (x - 0.5) * -2.5];
+            })
+          },
+          { warpOffsets: zeroGrid(3, 3) },
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              return [7 * (1 - y * 0.45), (x - 0.5) * 2.5];
+            })
+          }
+        ]),
+        BodyAngleY: binding([-1, 0, 1], [
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              return [(x - 0.5) * -5 * (1 - y), -4.5 * (1 - y)];
+            })
+          },
+          { warpOffsets: zeroGrid(3, 3) },
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              return [(x - 0.5) * 5 * (1 - y), 4.5 * (1 - y)];
+            })
+          }
+        ]),
+        ShoulderMotion: binding([-1, 0, 1], [
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              var shoulder = Math.max(0, 1 - Math.abs(y - 0.23) * 4);
+              return [(x - 0.5) * shoulder * -3.5, shoulder * 4.0];
+            })
+          },
+          { warpOffsets: zeroGrid(3, 3) },
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              var shoulder = Math.max(0, 1 - Math.abs(y - 0.23) * 4);
+              return [(x - 0.5) * shoulder * 3.5, shoulder * -4.0];
+            })
+          }
+        ]),
+        Breath: binding([0, 1], [
+          { warpOffsets: zeroGrid(3, 3) },
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              var chest = Math.max(0, 1 - Math.abs(y - 0.36) * 3.2);
+              return [(x - 0.5) * chest * 4.8, chest * -3.8];
+            })
+          }
+        ])
+      }
+    ));
+    nodes.push(rotationRigNode(
+      'head_rotation',
+      'Head and neck rotation',
+      'torso_warp',
+      anchors.neckPivot.cx,
+      anchors.neckPivot.cy,
+      {
+        AngleZ: binding([-1, 0, 1], [
+          { rotation: -6.5 }, { rotation: 0 }, { rotation: 6.5 }
+        ]),
+        BodyAngleZ: binding([-1, 0, 1], [
+          { rotation: 1.1 }, { rotation: 0 }, { rotation: -1.1 }
+        ])
+      }
+    ));
+    nodes.push(warpRigNode(
+      'head_warp',
+      'Head XY warp',
+      'head_rotation',
+      headX,
+      headY,
+      headWidth,
+      headHeight,
+      columns,
+      rows,
+      {
         AngleX: binding([-1, 0, 1], [
           {
             warpOffsets: gridOffsets(columns, rows, function (x, y) {
-              return [-6 - y * 2 + x * 3, (x - 0.5) * 2.2];
+              return [-7 - y * 2.5 + x * 3.5, (x - 0.5) * 2.4];
             })
           },
           { warpOffsets: zeroGrid(columns, rows) },
           {
             warpOffsets: gridOffsets(columns, rows, function (x, y) {
-              return [6 + y * 2 - (1 - x) * 3, -(x - 0.5) * 2.2];
+              return [7 + y * 2.5 - (1 - x) * 3.5, -(x - 0.5) * 2.4];
             })
           }
         ]),
         AngleY: binding([-1, 0, 1], [
           {
             warpOffsets: gridOffsets(columns, rows, function (x, y) {
-              return [(x - 0.5) * (1 - y) * 4, -7 + y * 4];
+              return [(x - 0.5) * (1 - y) * 4.5, -7.5 + y * 4.5];
             })
           },
           { warpOffsets: zeroGrid(columns, rows) },
           {
             warpOffsets: gridOffsets(columns, rows, function (x, y) {
-              return [-(x - 0.5) * y * 4, 7 - (1 - y) * 4];
+              return [-(x - 0.5) * y * 4.5, 7.5 - (1 - y) * 4.5];
             })
           }
         ])
       }
-    });
-    nodes.push({
-      id: 'bust_warp',
-      name: 'Bust local warp',
-      type: 'warp',
-      parentId: 'body_warp',
-      transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1, opacity: 1, drawOrder: 0 },
-      warp: { x: chestX, y: chestY, width: chestWidth, height: chestHeight, columns: 2, rows: 2 },
-      bindings: {
+    ));
+    nodes.push(warpRigNode(
+      'bust_warp',
+      'Bust local warp',
+      'torso_warp',
+      chestX,
+      chestY,
+      chestWidth,
+      chestHeight,
+      3,
+      3,
+      {
         Bust: binding([-1, 0, 1], [
           {
-            warpOffsets: gridOffsets(2, 2, function (x, y) {
-              var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.6);
-              return [(x - 0.5) * center * -1.5, center * y * -4.5];
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.7);
+              var lower = Math.pow(y, 1.2);
+              return [(x - 0.5) * center * -2.5, center * lower * -6.5];
             })
           },
-          { warpOffsets: zeroGrid(2, 2) },
+          { warpOffsets: zeroGrid(3, 3) },
           {
-            warpOffsets: gridOffsets(2, 2, function (x, y) {
-              var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.6);
-              return [(x - 0.5) * center * 1.5, center * y * 5.5];
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.7);
+              var lower = Math.pow(y, 1.2);
+              return [(x - 0.5) * center * 2.8, center * lower * 7.5];
+            })
+          }
+        ]),
+        Breath: binding([0, 1], [
+          { warpOffsets: zeroGrid(3, 3) },
+          {
+            warpOffsets: gridOffsets(3, 3, function (x, y) {
+              var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.8);
+              return [(x - 0.5) * center * 2.4, center * y * -2.8];
             })
           }
         ])
       }
-    });
+    ));
+    nodes.push(
+      rotationRigNode(
+        'wing_l_rotation',
+        'Left wing root',
+        'torso_warp',
+        anchors.neckPivot.cx - faceWidth * 0.62,
+        shoulderY,
+        {
+          WingSwing: binding([-1, 0, 1], [
+            { rotation: 4.8 }, { rotation: 0 }, { rotation: -4.8 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'wing_r_rotation',
+        'Right wing root',
+        'torso_warp',
+        anchors.neckPivot.cx + faceWidth * 0.62,
+        shoulderY,
+        {
+          WingSwing: binding([-1, 0, 1], [
+            { rotation: -4.8 }, { rotation: 0 }, { rotation: 4.8 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'arm_l_rotation',
+        'Left shoulder',
+        'torso_warp',
+        anchors.neckPivot.cx - faceWidth * 0.56,
+        shoulderY,
+        {
+          ArmSwing: binding([-1, 0, 1], [
+            { rotation: -3.2 }, { rotation: 0 }, { rotation: 3.2 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'arm_r_rotation',
+        'Right shoulder',
+        'torso_warp',
+        anchors.neckPivot.cx + faceWidth * 0.56,
+        shoulderY,
+        {
+          ArmSwing: binding([-1, 0, 1], [
+            { rotation: 3.2 }, { rotation: 0 }, { rotation: -3.2 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'cloak_l_rotation',
+        'Left cloak root',
+        'hip_warp',
+        anchors.neckPivot.cx - faceWidth * 0.46,
+        waistY,
+        {
+          CloakSwing: binding([-1, 0, 1], [
+            { rotation: -2.8 }, { rotation: 0 }, { rotation: 2.8 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'cloak_r_rotation',
+        'Right cloak root',
+        'hip_warp',
+        anchors.neckPivot.cx + faceWidth * 0.46,
+        waistY,
+        {
+          CloakSwing: binding([-1, 0, 1], [
+            { rotation: 2.8 }, { rotation: 0 }, { rotation: -2.8 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'tail_rotation',
+        'Tail root',
+        'hip_warp',
+        anchors.neckPivot.cx,
+        waistY + faceWidth * 0.8,
+        {
+          TailSwing: binding([-1, 0, 1], [
+            { rotation: -7.5 }, { rotation: 0 }, { rotation: 7.5 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'leg_l_rotation',
+        'Left leg root',
+        'hip_warp',
+        anchors.neckPivot.cx - faceWidth * 0.25,
+        waistY + faceWidth * 0.35,
+        {
+          LegFollow: binding([-1, 0, 1], [
+            { rotation: -1.3 }, { rotation: 0 }, { rotation: 1.3 }
+          ])
+        }
+      ),
+      rotationRigNode(
+        'leg_r_rotation',
+        'Right leg root',
+        'hip_warp',
+        anchors.neckPivot.cx + faceWidth * 0.25,
+        waistY + faceWidth * 0.35,
+        {
+          LegFollow: binding([-1, 0, 1], [
+            { rotation: 1.3 }, { rotation: 0 }, { rotation: -1.3 }
+          ])
+        }
+      )
+    );
 
     var sourceGroupsByDomain = {};
     var sourceGroupMetadata = {};
@@ -347,11 +718,36 @@
       var meshColumns = Math.max(2, Math.min(5, Math.round(layer.w / 76)));
       var meshRows = Math.max(2, Math.min(6, Math.round(layer.h / 76)));
       if (/hair|髪/i.test(layer.name)) {
-        meshColumns = Math.max(meshColumns, 3);
+        meshColumns = Math.max(meshColumns, 5);
+        meshRows = Math.max(meshRows, 10);
+      }
+      if (/^wing_/.test(base)) {
+        meshColumns = Math.max(meshColumns, 8);
+        meshRows = Math.max(meshRows, 10);
+      }
+      if (/^cloak_/.test(base)) {
+        meshColumns = Math.max(meshColumns, 6);
+        meshRows = Math.max(meshRows, 12);
+      }
+      if (/^(tail|arm_|leg_)/.test(base)) {
+        meshColumns = Math.max(meshColumns, 5);
+        meshRows = Math.max(meshRows, 12);
+      }
+      if (/^(body_base|bust_)/.test(base)) {
+        meshColumns = Math.max(meshColumns, 6);
         meshRows = Math.max(meshRows, 8);
       }
-      var parentId = layer.group === 'head' ? 'head_warp' : 'body_warp';
+      var parentId = layer.group === 'head' ? 'head_warp' : 'hip_warp';
       if (/^(topwear|bust)/.test(base)) parentId = 'bust_warp';
+      else if (base === 'wing_1') parentId = 'wing_l_rotation';
+      else if (base === 'wing_2') parentId = 'wing_r_rotation';
+      else if (base === 'arm_1') parentId = 'arm_l_rotation';
+      else if (base === 'arm_2') parentId = 'arm_r_rotation';
+      else if (base === 'cloak_1') parentId = 'cloak_l_rotation';
+      else if (base === 'cloak_2') parentId = 'cloak_r_rotation';
+      else if (base === 'tail') parentId = 'tail_rotation';
+      else if (base === 'leg_1') parentId = 'leg_l_rotation';
+      else if (base === 'leg_2') parentId = 'leg_r_rotation';
       parentId = ensureSourceGroupChain(layer.sourceGroupPath || [], parentId);
       var part = {
         id: partId,
@@ -406,40 +802,102 @@
         part.bindings.MouthOpen = binding([0, 1], [{ opacity: 1 }, { opacity: 0 }]);
       }
       if (/^wing_/.test(base)) {
-        var wingSign = /_1$/.test(base) ? -1 : 1;
-        part.transform.pivotX = wingSign < 0 ? layer.w * 0.92 : layer.w * 0.08;
-        part.transform.pivotY = layer.h * 0.04;
-        part.bindings.WingSwing = binding([-1, 0, 1], [
-          { rotation: wingSign * -2.2 },
-          { rotation: 0 },
-          { rotation: wingSign * 2.2 }
+        var wingDirection = /_1$/.test(base) ? 1 : -1;
+        part.bindings.WingFlap = binding([-1, 0, 1], [
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var fromRoot = /_1$/.test(base) ? 1 - x : x;
+              var reach = Math.pow(Math.max(fromRoot, y * 0.5), 1.4);
+              return [
+                wingDirection * reach * -18,
+                reach * (6 + y * 5)
+              ];
+            })
+          },
+          { meshOffsets: Core.createZeroOffsets(part.mesh.vertices.length) },
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var fromRoot = /_1$/.test(base) ? 1 - x : x;
+              var reach = Math.pow(Math.max(fromRoot, y * 0.5), 1.4);
+              return [
+                wingDirection * reach * 20,
+                -reach * (8 + y * 6)
+              ];
+            })
+          }
         ]);
       }
       if (/^tail/.test(base)) {
-        part.transform.pivotX = layer.w * 0.5;
-        part.transform.pivotY = layer.h * 0.03;
-        part.bindings.TailSwing = binding([-1, 0, 1], [
-          { rotation: -4.5 }, { rotation: 0 }, { rotation: 4.5 }
+        part.bindings.TailCurl = binding([-1, 0, 1], [
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.65);
+              return [-18 * reach, -4 * reach + (x - 0.5) * reach * 3];
+            })
+          },
+          { meshOffsets: Core.createZeroOffsets(part.mesh.vertices.length) },
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.65);
+              return [18 * reach, -4 * reach - (x - 0.5) * reach * 3];
+            })
+          }
         ]);
       }
       if (/^cloak_/.test(base)) {
-        var cloakSign = /_1$/.test(base) ? -1 : 1;
-        part.transform.pivotX = cloakSign < 0 ? layer.w * 0.82 : layer.w * 0.18;
-        part.transform.pivotY = layer.h * 0.03;
-        part.bindings.CloakSwing = binding([-1, 0, 1], [
-          { rotation: cloakSign * -1.6 },
-          { rotation: 0 },
-          { rotation: cloakSign * 1.6 }
+        var cloakDirection = /_1$/.test(base) ? -1 : 1;
+        part.bindings.CloakFlutter = binding([-1, 0, 1], [
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.8);
+              var fold = Math.sin(x * Math.PI * 2) * reach * 2.2;
+              return [cloakDirection * reach * -13 + fold, reach * 4];
+            })
+          },
+          { meshOffsets: Core.createZeroOffsets(part.mesh.vertices.length) },
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.8);
+              var fold = Math.sin(x * Math.PI * 2) * reach * -2.2;
+              return [cloakDirection * reach * 13 + fold, -reach * 4];
+            })
+          }
         ]);
       }
       if (/^arm_/.test(base)) {
-        var armSign = /_1$/.test(base) ? -1 : 1;
-        part.transform.pivotX = armSign < 0 ? layer.w * 0.9 : layer.w * 0.1;
-        part.transform.pivotY = layer.h * 0.03;
-        part.bindings.ArmSwing = binding([-1, 0, 1], [
-          { rotation: armSign * -0.9 },
-          { rotation: 0 },
-          { rotation: armSign * 0.9 }
+        var armDirection = /_1$/.test(base) ? -1 : 1;
+        part.bindings.ArmFollow = binding([-1, 0, 1], [
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.45);
+              return [armDirection * reach * -7, reach * 2.5];
+            })
+          },
+          { meshOffsets: Core.createZeroOffsets(part.mesh.vertices.length) },
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.45);
+              return [armDirection * reach * 7, -reach * 2.5];
+            })
+          }
+        ]);
+      }
+      if (/^leg_/.test(base)) {
+        var legDirection = /_1$/.test(base) ? -1 : 1;
+        part.bindings.LegFollow = binding([-1, 0, 1], [
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.55);
+              return [legDirection * reach * -3.5, reach * 1.2];
+            })
+          },
+          { meshOffsets: Core.createZeroOffsets(part.mesh.vertices.length) },
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x, y) {
+              var reach = Math.pow(y, 1.55);
+              return [legDirection * reach * 3.5, -reach * 1.2];
+            })
+          }
         ]);
       }
       nodes.push(part);
@@ -460,6 +918,37 @@
       if (mask) node.maskIds = [mask.id];
     });
 
+    var sampleSkins = [];
+
+    function addVerticalSkin(part, prefix, specs, options) {
+      if (!part || !part.source || !part.source.size || part.source.size.height < 16) return;
+      options = options || {};
+      var size = part.source.size;
+      var pivotX = options.pivotX == null ? size.width * 0.5 : Number(options.pivotX);
+      var bones = specs.map(function (spec, index) {
+        return {
+          id: prefix + '_' + spec.id,
+          name: spec.name,
+          parentId: index ? prefix + '_' + specs[index - 1].id : null,
+          pivotX: pivotX,
+          pivotY: size.height * spec.y,
+          parameterId: spec.parameterId,
+          angleScale: spec.angleScale,
+          angleOffset: 0
+        };
+      });
+      var weights = Core.generateSmoothChainWeights(part.mesh.vertices, bones, {
+        fadeStartY: size.height * Number(options.fadeStart == null ? 0.04 : options.fadeStart)
+      });
+      sampleSkins.push({
+        id: 'skin_' + prefix,
+        name: options.name || part.name + ' chain',
+        partId: part.id,
+        bones: bones,
+        weights: weights
+      });
+    }
+
     var hairParts = nodes.filter(function (node) {
       return node.type === 'part' && /hair|髪/i.test(node.name);
     }).sort(function (left, right) {
@@ -467,61 +956,67 @@
       var rightSize = right.source && right.source.size || {};
       return Number(rightSize.height || 0) - Number(leftSize.height || 0);
     });
-    var sampleSkins = [];
-    hairParts.forEach(function (hairPart, hairIndex) {
-      var hairSize = hairPart.source.size;
-      var bones = [
-        {
-          id: 'hair_' + hairIndex + '_root',
-          name: 'Hair root',
-          parentId: null,
-          pivotX: hairSize.width * 0.5,
-          pivotY: hairSize.height * 0.16,
-          parameterId: 'HairSwing',
-          angleScale: 3,
-          angleOffset: 0
-        },
-        {
-          id: 'hair_' + hairIndex + '_upper',
-          name: 'Hair upper',
-          parentId: 'hair_' + hairIndex + '_root',
-          pivotX: hairSize.width * 0.5,
-          pivotY: hairSize.height * 0.38,
-          parameterId: 'HairSwing',
-          angleScale: 5,
-          angleOffset: 0
-        },
-        {
-          id: 'hair_' + hairIndex + '_lower',
-          name: 'Hair lower',
-          parentId: 'hair_' + hairIndex + '_upper',
-          pivotX: hairSize.width * 0.5,
-          pivotY: hairSize.height * 0.64,
-          parameterId: 'HairSwing',
-          angleScale: 7,
-          angleOffset: 0
-        },
-        {
-          id: 'hair_' + hairIndex + '_tip',
-          name: 'Hair tip',
-          parentId: 'hair_' + hairIndex + '_lower',
-          pivotX: hairSize.width * 0.5,
-          pivotY: hairSize.height * 0.86,
-          parameterId: 'HairSwing',
-          angleScale: 9,
-          angleOffset: 0
-        }
-      ];
-      var weights = Core.generateSmoothChainWeights(hairPart.mesh.vertices, bones, {
-        fadeStartY: hairSize.height * 0.06
-      });
-      sampleSkins.push({
-        id: 'skin_hair_' + hairIndex,
-        name: 'Hair chain',
-        partId: hairPart.id,
-        bones: bones,
-        weights: weights
-      });
+    hairParts.forEach(function (part, index) {
+      addVerticalSkin(part, 'hair_' + index, [
+        { id: 'root', name: 'Hair root', y: 0.12, parameterId: 'HairSwing', angleScale: 2.2 },
+        { id: 'upper', name: 'Hair upper', y: 0.35, parameterId: 'HairSwing', angleScale: 3.8 },
+        { id: 'lower', name: 'Hair lower', y: 0.63, parameterId: 'HairFlutter', angleScale: 5.8 },
+        { id: 'tip', name: 'Hair tip', y: 0.88, parameterId: 'HairFlutter', angleScale: 7.8 }
+      ], { fadeStart: 0.03, name: 'Hair flexible chain' });
+    });
+
+    nodes.filter(function (node) {
+      return node.type === 'part' && /^cloak_/.test(node.name);
+    }).forEach(function (part, index) {
+      var direction = /_1$/.test(part.name) ? -1 : 1;
+      addVerticalSkin(part, 'cloak_' + index, [
+        { id: 'root', name: 'Cloak root', y: 0.08, parameterId: 'CloakSwing', angleScale: direction * 0.7 },
+        { id: 'upper', name: 'Cloak upper', y: 0.34, parameterId: 'CloakSwing', angleScale: direction * 1.3 },
+        { id: 'lower', name: 'Cloak lower', y: 0.66, parameterId: 'CloakFlutter', angleScale: direction * 2.5 },
+        { id: 'tip', name: 'Cloak tip', y: 0.9, parameterId: 'CloakFlutter', angleScale: direction * 3.8 }
+      ], { fadeStart: 0.03, name: 'Cloak cloth chain' });
+    });
+
+    var tailPart = nodes.find(function (node) {
+      return node.type === 'part' && node.name === 'tail';
+    });
+    addVerticalSkin(tailPart, 'tail', [
+      { id: 'root', name: 'Tail root', y: 0.07, parameterId: 'TailSwing', angleScale: 0.8 },
+      { id: 'upper', name: 'Tail upper', y: 0.32, parameterId: 'TailSwing', angleScale: 1.8 },
+      { id: 'lower', name: 'Tail lower', y: 0.62, parameterId: 'TailCurl', angleScale: 3.2 },
+      { id: 'tip', name: 'Tail tip', y: 0.9, parameterId: 'TailCurl', angleScale: 5.4 }
+    ], { fadeStart: 0.02, name: 'Tail flexible chain' });
+
+    nodes.filter(function (node) {
+      return node.type === 'part' && /^arm_/.test(node.name);
+    }).forEach(function (part, index) {
+      var direction = /_1$/.test(part.name) ? -1 : 1;
+      addVerticalSkin(part, 'arm_' + index, [
+        { id: 'root', name: 'Upper arm root', y: 0.08, parameterId: 'ArmSwing', angleScale: direction * 0.45 },
+        { id: 'upper', name: 'Upper arm', y: 0.34, parameterId: 'ArmSwing', angleScale: direction * 0.9 },
+        { id: 'lower', name: 'Forearm', y: 0.65, parameterId: 'ArmFollow', angleScale: direction * 1.7 },
+        { id: 'hand', name: 'Hand', y: 0.9, parameterId: 'ArmFollow', angleScale: direction * 2.3 }
+      ], { fadeStart: 0.02, name: 'Arm articulated chain' });
+    });
+
+    nodes.filter(function (node) {
+      return node.type === 'part' && /^leg_/.test(node.name);
+    }).forEach(function (part, index) {
+      var direction = /_1$/.test(part.name) ? -1 : 1;
+      addVerticalSkin(part, 'leg_' + index, [
+        { id: 'root', name: 'Thigh root', y: 0.06, parameterId: 'LegFollow', angleScale: direction * 0.2 },
+        { id: 'knee', name: 'Knee', y: 0.43, parameterId: 'LegFollow', angleScale: direction * 0.55 },
+        { id: 'ankle', name: 'Ankle', y: 0.82, parameterId: 'LegFollow', angleScale: direction * 0.8 }
+      ], { fadeStart: 0.01, name: 'Leg balance chain' });
+    });
+
+    nodes.filter(function (node) {
+      return node.type === 'part' && /^earwear_/.test(node.name);
+    }).forEach(function (part, index) {
+      addVerticalSkin(part, 'earring_' + index, [
+        { id: 'root', name: 'Earring root', y: 0.08, parameterId: 'EarringSwing', angleScale: 1.5 },
+        { id: 'tip', name: 'Earring tip', y: 0.82, parameterId: 'EarringSwing', angleScale: 5.5 }
+      ], { fadeStart: 0.02, name: 'Earring pendulum chain' });
     });
 
     return {
@@ -541,17 +1036,28 @@
         { id: 'AngleX', name: 'Angle X', min: -1, max: 1, default: 0 },
         { id: 'AngleY', name: 'Angle Y', min: -1, max: 1, default: 0 },
         { id: 'AngleZ', name: 'Angle Z', min: -1, max: 1, default: 0 },
-        { id: 'BodyAngle', name: 'Body angle', min: -1, max: 1, default: 0 },
+        { id: 'BodyAngleX', name: 'Body angle X', min: -1, max: 1, default: 0 },
+        { id: 'BodyAngleY', name: 'Body angle Y', min: -1, max: 1, default: 0 },
+        { id: 'BodyAngleZ', name: 'Body angle Z', min: -1, max: 1, default: 0 },
+        { id: 'ShoulderMotion', name: 'Shoulder motion', min: -1, max: 1, default: 0 },
+        { id: 'HipShift', name: 'Hip shift', min: -1, max: 1, default: 0 },
         { id: 'EyeOpenL', name: 'Left eye open', min: 0, max: 1, default: 1 },
         { id: 'EyeOpenR', name: 'Right eye open', min: 0, max: 1, default: 1 },
         { id: 'MouthOpen', name: 'Mouth open', min: 0, max: 1, default: 0 },
-        { id: 'Breath', name: 'Breath', min: 0, max: 1, default: 0 },
+        { id: 'Breath', name: 'Breath', min: 0, max: 1, default: 0.5 },
         { id: 'Bust', name: 'Bust spring', min: -1, max: 1, default: 0 },
         { id: 'HairSwing', name: 'Hair swing', min: -1, max: 1, default: 0 },
+        { id: 'HairFlutter', name: 'Hair tip flutter', min: -1, max: 1, default: 0 },
         { id: 'WingSwing', name: 'Wing swing', min: -1, max: 1, default: 0 },
+        { id: 'WingFlap', name: 'Wing membrane flex', min: -1, max: 1, default: 0 },
         { id: 'TailSwing', name: 'Tail swing', min: -1, max: 1, default: 0 },
+        { id: 'TailCurl', name: 'Tail curl', min: -1, max: 1, default: 0 },
         { id: 'CloakSwing', name: 'Cloak swing', min: -1, max: 1, default: 0 },
-        { id: 'ArmSwing', name: 'Arm swing', min: -1, max: 1, default: 0 }
+        { id: 'CloakFlutter', name: 'Cloak tip flutter', min: -1, max: 1, default: 0 },
+        { id: 'ArmSwing', name: 'Arm swing', min: -1, max: 1, default: 0 },
+        { id: 'ArmFollow', name: 'Forearm follow-through', min: -1, max: 1, default: 0 },
+        { id: 'LegFollow', name: 'Leg balance', min: -1, max: 1, default: 0 },
+        { id: 'EarringSwing', name: 'Earring swing', min: -1, max: 1, default: 0 }
       ],
       textures: textures,
       nodes: nodes,
@@ -561,66 +1067,152 @@
           name: 'Bust follow-through',
           enabled: true,
           inputs: [
-            { parameterId: 'Breath', center: 0, weight: 1 },
-            { parameterId: 'BodyAngle', center: 0, weight: 0.25 }
+            { parameterId: 'Breath', center: 0.5, weight: 1.15 },
+            { parameterId: 'BodyAngleY', center: 0, weight: 0.35 },
+            { parameterId: 'ShoulderMotion', center: 0, weight: 0.2 }
           ],
-          outputs: [{ parameterId: 'Bust', scale: 0.55, offset: 0 }],
-          settings: { stiffness: 24, damping: 4.2, mass: 1 }
+          outputs: [{ parameterId: 'Bust', scale: 1.15, offset: 0 }],
+          settings: { stiffness: 22, damping: 4.1, mass: 1 }
         },
         {
-          id: 'physics_hair',
-          name: 'Hair follow-through',
+          id: 'physics_hair_root',
+          name: 'Hair root follow-through',
           enabled: true,
           inputs: [
-            { parameterId: 'AngleZ', center: 0, weight: 0.75 },
-            { parameterId: 'BodyAngle', center: 0, weight: 0.35 }
+            { parameterId: 'AngleZ', center: 0, weight: 1.0 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.7 },
+            { parameterId: 'BodyAngleX', center: 0, weight: 0.25 }
           ],
-          outputs: [{ parameterId: 'HairSwing', scale: 1.25, offset: 0 }],
-          settings: { stiffness: 16, damping: 3.6, mass: 1.1 }
+          outputs: [{ parameterId: 'HairSwing', scale: 2.4, offset: 0 }],
+          settings: { stiffness: 15, damping: 3.5, mass: 1.05 }
         },
         {
-          id: 'physics_wing',
-          name: 'Wing follow-through',
+          id: 'physics_hair_tip',
+          name: 'Hair tip follow-through',
           enabled: true,
           inputs: [
-            { parameterId: 'Breath', center: 0, weight: 0.7 },
-            { parameterId: 'BodyAngle', center: 0, weight: 0.3 }
+            { parameterId: 'AngleZ', center: 0, weight: 1.0 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.85 },
+            { parameterId: 'ShoulderMotion', center: 0, weight: 0.25 }
           ],
-          outputs: [{ parameterId: 'WingSwing', scale: 0.75, offset: 0 }],
-          settings: { stiffness: 11, damping: 3.2, mass: 1.4 }
+          outputs: [{ parameterId: 'HairFlutter', scale: 3.0, offset: 0 }],
+          settings: { stiffness: 8.5, damping: 2.7, mass: 1.3 }
         },
         {
-          id: 'physics_tail',
-          name: 'Tail follow-through',
+          id: 'physics_wing_root',
+          name: 'Wing root follow-through',
           enabled: true,
           inputs: [
-            { parameterId: 'AngleZ', center: 0, weight: 0.8 },
-            { parameterId: 'BodyAngle', center: 0, weight: 0.35 }
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.75 },
+            { parameterId: 'BodyAngleX', center: 0, weight: 0.35 },
+            { parameterId: 'Breath', center: 0.5, weight: 0.55 }
           ],
-          outputs: [{ parameterId: 'TailSwing', scale: 1.1, offset: 0 }],
-          settings: { stiffness: 9, damping: 2.8, mass: 1.25 }
+          outputs: [{ parameterId: 'WingSwing', scale: 2.0, offset: 0 }],
+          settings: { stiffness: 10.5, damping: 3.1, mass: 1.45 }
         },
         {
-          id: 'physics_cloak',
-          name: 'Cloak follow-through',
+          id: 'physics_wing_membrane',
+          name: 'Wing membrane follow-through',
           enabled: true,
           inputs: [
-            { parameterId: 'BodyAngle', center: 0, weight: 0.75 },
-            { parameterId: 'AngleZ', center: 0, weight: 0.25 }
+            { parameterId: 'Breath', center: 0.5, weight: 0.8 },
+            { parameterId: 'ShoulderMotion', center: 0, weight: 0.5 },
+            { parameterId: 'BodyAngleY', center: 0, weight: 0.25 }
           ],
-          outputs: [{ parameterId: 'CloakSwing', scale: 0.8, offset: 0 }],
-          settings: { stiffness: 12, damping: 3.4, mass: 1.5 }
+          outputs: [{ parameterId: 'WingFlap', scale: 1.45, offset: 0 }],
+          settings: { stiffness: 7.5, damping: 2.6, mass: 1.6 }
         },
         {
-          id: 'physics_arm',
-          name: 'Arm breathing follow-through',
+          id: 'physics_tail_root',
+          name: 'Tail root follow-through',
           enabled: true,
           inputs: [
-            { parameterId: 'Breath', center: 0, weight: 0.65 },
-            { parameterId: 'BodyAngle', center: 0, weight: 0.2 }
+            { parameterId: 'HipShift', center: 0, weight: 1.0 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.65 }
           ],
-          outputs: [{ parameterId: 'ArmSwing', scale: 0.55, offset: 0 }],
-          settings: { stiffness: 18, damping: 4.5, mass: 1.0 }
+          outputs: [{ parameterId: 'TailSwing', scale: 2.7, offset: 0 }],
+          settings: { stiffness: 9.5, damping: 2.9, mass: 1.2 }
+        },
+        {
+          id: 'physics_tail_tip',
+          name: 'Tail tip follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'HipShift', center: 0, weight: 0.8 },
+            { parameterId: 'BodyAngleX', center: 0, weight: 0.55 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.35 }
+          ],
+          outputs: [{ parameterId: 'TailCurl', scale: 3.1, offset: 0 }],
+          settings: { stiffness: 6.5, damping: 2.25, mass: 1.45 }
+        },
+        {
+          id: 'physics_cloak_root',
+          name: 'Cloak root follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'HipShift', center: 0, weight: 0.85 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.7 }
+          ],
+          outputs: [{ parameterId: 'CloakSwing', scale: 2.1, offset: 0 }],
+          settings: { stiffness: 11, damping: 3.1, mass: 1.35 }
+        },
+        {
+          id: 'physics_cloak_tip',
+          name: 'Cloak tip follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'HipShift', center: 0, weight: 0.65 },
+            { parameterId: 'BodyAngleX', center: 0, weight: 0.55 },
+            { parameterId: 'ShoulderMotion', center: 0, weight: 0.2 }
+          ],
+          outputs: [{ parameterId: 'CloakFlutter', scale: 2.65, offset: 0 }],
+          settings: { stiffness: 7.2, damping: 2.5, mass: 1.55 }
+        },
+        {
+          id: 'physics_arm_root',
+          name: 'Arm root follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'ShoulderMotion', center: 0, weight: 0.9 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.65 },
+            { parameterId: 'Breath', center: 0.5, weight: 0.35 }
+          ],
+          outputs: [{ parameterId: 'ArmSwing', scale: 2.0, offset: 0 }],
+          settings: { stiffness: 17, damping: 4.2, mass: 1.0 }
+        },
+        {
+          id: 'physics_arm_lower',
+          name: 'Forearm follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'ShoulderMotion', center: 0, weight: 0.75 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.8 },
+            { parameterId: 'BodyAngleX', center: 0, weight: 0.25 }
+          ],
+          outputs: [{ parameterId: 'ArmFollow', scale: 2.35, offset: 0 }],
+          settings: { stiffness: 10.5, damping: 3.2, mass: 1.25 }
+        },
+        {
+          id: 'physics_leg_balance',
+          name: 'Leg balance follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'HipShift', center: 0, weight: 0.9 },
+            { parameterId: 'BodyAngleZ', center: 0, weight: 0.35 }
+          ],
+          outputs: [{ parameterId: 'LegFollow', scale: 1.3, offset: 0 }],
+          settings: { stiffness: 20, damping: 5.2, mass: 1.1 }
+        },
+        {
+          id: 'physics_earring',
+          name: 'Earring pendulum',
+          enabled: true,
+          inputs: [
+            { parameterId: 'AngleZ', center: 0, weight: 1.0 },
+            { parameterId: 'AngleX', center: 0, weight: 0.25 }
+          ],
+          outputs: [{ parameterId: 'EarringSwing', scale: 2.4, offset: 0 }],
+          settings: { stiffness: 12, damping: 3.0, mass: 0.8 }
         }
       ],
       glues: [],
@@ -867,6 +1459,7 @@
     renderCanvas.height = overlayCanvas.height = model.canvas.height;
     renderCanvas.style.aspectRatio = overlayCanvas.style.aspectRatio =
       model.canvas.width + ' / ' + model.canvas.height;
+    fitEmbeddedCanvas();
     document.getElementById('emptyState').hidden = true;
     document.getElementById('modelName').textContent =
       (model.meta && model.meta.name ? model.meta.name : 'UNTITLED').toUpperCase();
@@ -888,6 +1481,7 @@
     updateStats();
     evaluateAndRender();
     setStatus('モデル読込完了');
+    fitEmbeddedCanvas();
   }
 
   async function loadPsdBuffer(buffer, name, options) {
@@ -2523,6 +3117,20 @@
       });
       changed = true;
     }
+    if (isEmbedded) {
+      parameterValues.EyeOpenL = Math.max(
+        0,
+        Math.min(1, Number(parameterValues.EyeOpenL == null ? 1 : parameterValues.EyeOpenL)
+          * embeddedExpression.eyeScaleL)
+      );
+      parameterValues.EyeOpenR = Math.max(
+        0,
+        Math.min(1, Number(parameterValues.EyeOpenR == null ? 1 : parameterValues.EyeOpenR)
+          * embeddedExpression.eyeScaleR)
+      );
+      parameterValues.MouthOpen = embeddedExpression.mouthOpen;
+      changed = true;
+    }
     if (physicsEnabled && physicsRuntime) {
       var physicsOutputs = physicsRuntime.step(parameterValues, dt);
       Object.keys(physicsOutputs).forEach(function (parameterId) {
@@ -2713,6 +3321,36 @@
     exportModel: function () { return model ? Core.exportModel(model) : null; },
     getModel: function () { return model; }
   };
+
+  if (isEmbedded) {
+    showMesh = false;
+    overlayCanvas.style.display = 'none';
+    idleEnabled = true;
+    physicsEnabled = true;
+    idleBlend = 0;
+    idleRuntime.reset();
+    window.addEventListener('resize', fitEmbeddedCanvas);
+    window.addEventListener('message', function (event) {
+      if (event.origin !== window.location.origin || !event.data) return;
+      if (event.data.type === 'anime25d-fit') {
+        fitEmbeddedCanvas();
+      } else if (event.data.type === 'anime25d-expression') {
+        applyEmbeddedExpression(event.data.name);
+      }
+    });
+    loadSample().then(function () {
+      applyEmbeddedExpression('neutral');
+      fitEmbeddedCanvas();
+      notifyEmbedded('anime25d-ready', {
+        parts: model.nodes.filter(function (node) { return node.type === 'part'; }).length,
+        parameters: model.parameters.length,
+        physics: model.physics.length,
+        skins: model.skins.length
+      });
+    }).catch(function (error) {
+      notifyEmbedded('anime25d-error', { message: error.message });
+    });
+  }
 
   requestAnimationFrame(animate);
 })();

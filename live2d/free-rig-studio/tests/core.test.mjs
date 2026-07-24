@@ -407,18 +407,41 @@ test('idle motion produces smooth bounded automatic blinks and phased motion', (
   let maximumEyeDelta = 0;
   let previousEye = 1;
   let sample;
+  const tracked = [
+    'AngleX',
+    'AngleY',
+    'AngleZ',
+    'BodyAngleX',
+    'BodyAngleY',
+    'BodyAngleZ',
+    'ShoulderMotion',
+    'HipShift',
+    'Breath'
+  ];
+  const ranges = Object.fromEntries(tracked.map((id) => [id, [Infinity, -Infinity]]));
   for (let index = 0; index < 600; index++) {
     sample = runtime.step(1 / 60, 1);
     minimumEye = Math.min(minimumEye, sample.EyeOpenL, sample.EyeOpenR);
     maximumEyeDelta = Math.max(maximumEyeDelta, Math.abs(sample.EyeOpenL - previousEye));
     previousEye = sample.EyeOpenL;
+    tracked.forEach((id) => {
+      ranges[id][0] = Math.min(ranges[id][0], sample[id]);
+      ranges[id][1] = Math.max(ranges[id][1], sample[id]);
+    });
     assert.ok(sample.EyeOpenL >= 0 && sample.EyeOpenL <= 1);
     assert.ok(sample.EyeOpenR >= 0 && sample.EyeOpenR <= 1);
+    assert.ok(sample.Breath >= 0 && sample.Breath <= 1);
   }
   assert.ok(runtime.getDiagnostics().blinkCount >= 1);
   assert.ok(minimumEye < 0.02);
   assert.ok(maximumEyeDelta < 0.4);
   assert.notEqual(sample.AngleX, sample.AngleZ);
+  assert.ok(ranges.BodyAngleX[1] - ranges.BodyAngleX[0] > 0.2);
+  assert.ok(ranges.BodyAngleY[1] - ranges.BodyAngleY[0] > 0.08);
+  assert.ok(ranges.BodyAngleZ[1] - ranges.BodyAngleZ[0] > 0.15);
+  assert.ok(ranges.ShoulderMotion[1] - ranges.ShoulderMotion[0] > 0.45);
+  assert.ok(ranges.HipShift[1] - ranges.HipShift[0] > 0.1);
+  assert.ok(ranges.Breath[1] - ranges.Breath[0] > 0.9);
 });
 
 test('packs a deterministic non-overlapping texture atlas within bounds', () => {

@@ -3,5 +3,5 @@ covered_foreground_pixels=581906
 missing_foreground_pixels=0
 extra_foreground_pixels=0
 max_rgb_error_on_covered_pixels=0
-semantic_layers=19
+semantic_layers=21
 expression_layers=6

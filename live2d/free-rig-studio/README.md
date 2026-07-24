@@ -37,7 +37,11 @@ Live2Dの独自ファイルを解析・互換実装するものではない。
 - Atlasの重複・範囲外検証と再import後の自動再生成
 - 全Parameter極値での有限頂点監査
 - v6キャラの翼・尾・外套・腕・左右胸・4髪層の独立Parts
-- 翼・尾・外套・腕の独立spring Physics
+- 左右脚をbodyから分離した全身32 Parts
+- 全身 / 腰 / 上半身 / 頭 / 胸部の多段Warp・Rotation hierarchy
+- 翼・尾・外套・腕・脚・髪・ピアスの12 Skinning chain
+- 胸・髪根/先・翼根/膜・尾根/先・外套根/先・腕/前腕・脚・ピアスの13 Physics group
+- LP埋め込みモード、cover fit、静止フォールバック、4表情message連携
 - ユーザー採用元絵の可視RGBを保持した分解と、生成した頭部隠れ下地
 
 Glue、Skinning、Texture Atlasの操作概念はLive2D Cubismの公開マニュアルを
@@ -46,6 +50,9 @@ Glue、Skinning、Texture Atlasの操作概念はLive2D Cubismの公開マニュ
 - [Glue](https://docs.live2d.com/en/cubism-editor-manual/glue/)
 - [Skinning](https://docs.live2d.com/en/cubism-editor-manual/skinning/)
 - [Texture Atlas](https://docs.live2d.com/en/cubism-editor-manual/texture-atlas-edit/)
+- [Deformer](https://docs.live2d.com/en/cubism-editor-manual/deformer/)
+- [Warp Deformer](https://docs.live2d.com/en/cubism-editor-manual/making-and-placement-of-warp-deformer/)
+- [Parent-child hierarchy](https://docs.live2d.com/en/cubism-editor-manual/combintion-of-parent-child-relation/)
 
 ## 起動
 
@@ -76,6 +83,6 @@ node --test live2d/free-rig-studio/tests/core.test.mjs
 - ArtPath
 - Undo stack
 - Timeline / Graph Editor
-- LP runtime用の軽量export
+- LP runtime専用bundleへの軽量export（現在はeditor coreをembed）
 
 Live2D独自形式の読込・出力や互換性は対象外。

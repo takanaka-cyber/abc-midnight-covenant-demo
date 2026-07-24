@@ -60,4 +60,15 @@ The raw 12-step composite contained hallucinated back hair and color drift. Ther
 2. Discard generated color and keep only clipped masks.
 3. Add character-specific closed-eye and closed-mouth layers before rigging.
 4. Feed the correctly named PSD into Anime2.5DRig.
-5. Keep all runtime work on `codex/live2d-rig-poc`; do not change the Pages source branch until the user approves the moving result.
+5. Keep all runtime work on `codex/free-rig-editor-core`; do not change the Pages source branch until the user approves the moving result.
+
+## v7 full-body runtime verification
+
+- Source PSD: 887×1774 / 28 layers / exact visible RGB reconstruction
+- Runtime graph: 32 parts / 48 nodes / 25 parameters
+- Dynamics: 13 fixed-60Hz physics groups / 12 skinning chains
+- Full-body hierarchy: whole body → hip/torso → head, shoulders, wings, cloak, tail, legs
+- 375×812 article: horizontal overflow `0`, rig stage 373×299
+- Canvas capture: VP9 / 887×1774 / 30fps / 299 decoded frames
+- 8-second part motion: wings 48–51px, tail 21px, arms 11–15px, legs 3–4px
+- Validation: model errors `0`, browser console errors `0`, 20 deterministic tests PASS

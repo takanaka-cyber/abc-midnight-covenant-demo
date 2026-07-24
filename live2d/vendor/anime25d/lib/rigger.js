@@ -27,6 +27,7 @@
     'face underlay': { depth: 0.52, group: 'head' },
     'back hair':   { depth: 0.55, group: 'head', phys: 'hair' },
     'tail':        { depth: 0.78, group: 'body', phys: 'tail' },
+    'leg':         { depth: 0.79, group: 'body', phys: 'leg' },
     'cloak':       { depth: 0.82, group: 'body', phys: 'cloak' },
     'bottomwear':  { depth: 0.88, group: 'body' },
     'legwear':     { depth: 0.84, group: 'body' },

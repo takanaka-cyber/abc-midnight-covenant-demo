@@ -675,25 +675,43 @@
       });
       var eyeOpenL = eyeOpenAt(time, 0);
       var eyeOpenR = eyeOpenAt(time, 0.006);
+      var breathPhase = time * Math.PI * 2 / 4.15;
+      var breath = 0.5 - Math.cos(breathPhase) * 0.5;
       lastEyeOpen = Math.min(eyeOpenL, eyeOpenR);
       return {
         AngleX: (
-          Math.sin(time * 0.52) * 0.17 +
-          Math.sin(time * 0.19 + 1.1) * 0.035
+          Math.sin(time * 0.52) * 0.22 +
+          Math.sin(time * 0.19 + 1.1) * 0.055
         ) * scale,
         AngleY: (
-          Math.sin(time * 0.37 + 0.82) * 0.075 +
-          Math.sin(time * 0.13) * 0.02
+          Math.sin(time * 0.37 + 0.82) * 0.115 +
+          Math.sin(time * 0.13) * 0.035
         ) * scale,
         AngleZ: (
-          Math.sin(time * 0.31 + 1.36) * 0.12 +
-          Math.sin(time * 0.11 + 0.2) * 0.025
+          Math.sin(time * 0.31 + 1.36) * 0.16 +
+          Math.sin(time * 0.11 + 0.2) * 0.04
         ) * scale,
-        BodyAngle: (
-          Math.sin(time * 0.235 - 0.4) * 0.135 +
-          Math.sin(time * 0.08 + 1.7) * 0.025
+        BodyAngleX: (
+          Math.sin(time * 0.235 - 0.4) * 0.19 +
+          Math.sin(time * 0.08 + 1.7) * 0.045
         ) * scale,
-        Breath: (0.5 - Math.cos(time * Math.PI * 2 / 3.8) * 0.5) * scale,
+        BodyAngleY: (
+          Math.sin(time * 0.29 + 0.55) * 0.09 +
+          Math.sin(time * 0.12 - 0.7) * 0.025
+        ) * scale,
+        BodyAngleZ: (
+          Math.sin(time * 0.22 - 0.75) * 0.18 +
+          Math.sin(time * 0.071 + 0.4) * 0.035
+        ) * scale,
+        ShoulderMotion: (
+          Math.sin(breathPhase - 0.35) * 0.31 +
+          Math.sin(time * 0.47 + 1.2) * 0.045
+        ) * scale,
+        HipShift: (
+          Math.sin(time * 0.205 + 1.85) * 0.2 +
+          Math.sin(time * 0.063 - 0.2) * 0.035
+        ) * scale,
+        Breath: 0.5 + (breath - 0.5) * scale,
         EyeOpenL: eyeOpenL,
         EyeOpenR: eyeOpenR
       };

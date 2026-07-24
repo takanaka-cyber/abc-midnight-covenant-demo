@@ -74,7 +74,17 @@ def main() -> None:
     size = (width, height)
 
     raw = {}
-    for name in ("wing_l", "wing_r", "arm_l", "arm_r", "cloak_l", "cloak_r", "tail"):
+    for name in (
+        "wing_l",
+        "wing_r",
+        "arm_l",
+        "arm_r",
+        "cloak_l",
+        "cloak_r",
+        "tail",
+        "leg_l",
+        "leg_r",
+    ):
         raw[name] = largest_component(np.array(Image.open(SAM / f"mask_{name}.png").convert("L")))
         raw[name] = cv2.bitwise_and(raw[name], foreground)
 
@@ -86,6 +96,8 @@ def main() -> None:
         "cloak_l": polygon_mask(size, [(60, 500), (430, 500), (410, 1510), (60, 1510)]),
         "cloak_r": polygon_mask(size, [(457, 500), (827, 500), (827, 1510), (477, 1510)]),
         "tail": polygon_mask(size, [(390, 770), (495, 770), (500, 1460), (390, 1460)]),
+        "leg_l": polygon_mask(size, [(250, 640), (445, 640), (445, 1590), (230, 1590)]),
+        "leg_r": polygon_mask(size, [(442, 640), (640, 640), (660, 1590), (442, 1590)]),
     }
     for name, region in semantic_regions.items():
         raw[name] = expand_within(raw[name], foreground, region, 3)
@@ -140,6 +152,8 @@ def main() -> None:
         "tail",
         "cloak_l",
         "cloak_r",
+        "leg_l",
+        "leg_r",
         "hair_back",
         "wing_l",
         "wing_r",
