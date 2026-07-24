@@ -12,7 +12,7 @@
 
 このPoCは公式Live2D Cubism形式ではない。1枚絵をパーツ分けし、WebGLメッシュとスプリング物理でLive2D風に動かす方式を採る。
 
-## 現在の実装（v10 full-body performance）
+## 現在の実装（v11 face-safe performance）
 
 - ユーザー採用元絵: `source/abc_succubus_live2d_master_v5_user_approved.png`
 - 透過・デスピル元絵: `source/abc_succubus_live2d_master_v5.png`
@@ -27,7 +27,7 @@
 - `prefers-reduced-motion`: iframeを非表示にして静止画へ固定
 - upstream license: `vendor/anime25d/LICENSE`
 
-v10のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩、腰、左右脚、
+v11のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩、腰、左右脚、
 髪、左右翼、尾、左右外套、両腕、呼吸、胸部局所スプリングを独立して駆動する。
 全身Warpを親に、上半身・腰・頭・肩・翼根・外套根・尾根・脚根を子へ置き、
 柔軟部は高密度Meshと複数BoneのSkinningで位相差を作る。
@@ -35,6 +35,9 @@ v10のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩�
 一回性の頷き・誘導ジェスチャーをLPの会話状態から駆動する。会話中は視線・頭・
 肩・腰・腕を連動させ、誘導ジェスチャーでは物理演算後に翼・尾・外套の演技を
 加算することで、物理出力によるモーション消失を防ぐ。
+発話口は元PSDの`mouth_open` / `mouth_close`差分を主に使い、口パーツ全体の拡縮を
+行わない。口形Warpは小振幅へ制限し、通常・笑顔・誘惑表情の連続フレームで
+顔の輪郭とパーツ位置が崩れないことを確認する。
 
 ### Cubism標準パラメーターとの対応
 
@@ -99,7 +102,7 @@ v10のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩�
 4. まばたき、呼吸、髪・衣装、胸の順に単体検証
 5. LPへ組み込み、静止フォールバックと負荷を検証
 
-## v10ローカルQA
+## v11ローカルQA
 
 - PSD: 887×1774、35レイヤー、readback成功
 - 可視RGB再合成: 欠損 `0px`、余分 `0px`、RGB最大誤差 `0`
@@ -127,5 +130,9 @@ v10のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩�
 `output/playwright/v31-smile-375x812.png`、
 `output/playwright/v31-alluring-full-body-375x812.png`、
 `output/playwright/v31-full-body-seam-audit.png`。
+発話顔の連続QAは `output/playwright/v32-talk-before-face-collapse.png`、
+`output/playwright/v32-talk-fixed-10frames.png`、
+`output/playwright/v32-smile-talk-8frames.png`、
+`output/playwright/v32-alluring-talk-8frames.png`。
 
 未完了: 実機での人間による動き評価と、承認後のPages/main反映。

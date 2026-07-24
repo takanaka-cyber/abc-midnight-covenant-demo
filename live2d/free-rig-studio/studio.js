@@ -11,31 +11,31 @@
     neutral: {
       eyeScaleL: 1, eyeScaleR: 1, eyeSmileL: 0, eyeSmileR: 0,
       eyeballX: 0, eyeballY: 0, eyeballForm: 0,
-      mouthOpen: 0.04, mouthForm: 0.08, cheek: 0,
+      mouthOpen: 0.04, mouthForm: 0.04, cheek: 0,
       poseAngleZ: 0, poseBodyX: 0, poseBodyZ: 0
     },
     concerned: {
       eyeScaleL: 0.86, eyeScaleR: 0.86, eyeSmileL: 0, eyeSmileR: 0,
       eyeballX: -0.08, eyeballY: 0.08, eyeballForm: 0,
-      mouthOpen: 0.08, mouthForm: -0.24, cheek: 0,
+      mouthOpen: 0.08, mouthForm: -0.15, cheek: 0,
       poseAngleZ: -0.08, poseBodyX: -0.04, poseBodyZ: 0.03
     },
     serious: {
       eyeScaleL: 0.74, eyeScaleR: 0.74, eyeSmileL: 0, eyeSmileR: 0,
       eyeballX: 0.05, eyeballY: -0.04, eyeballForm: -0.06,
-      mouthOpen: 0.02, mouthForm: -0.14, cheek: 0,
+      mouthOpen: 0.02, mouthForm: -0.12, cheek: 0,
       poseAngleZ: 0.05, poseBodyX: 0.08, poseBodyZ: -0.03
     },
     smile: {
       eyeScaleL: 0.88, eyeScaleR: 0.88, eyeSmileL: 0.6, eyeSmileR: 0.6,
       eyeballX: 0, eyeballY: -0.02, eyeballForm: 0.04,
-      mouthOpen: 0.1, mouthForm: 0.78, cheek: 0.3,
+      mouthOpen: 0.1, mouthForm: 0.48, cheek: 0.3,
       poseAngleZ: 0.14, poseBodyX: 0.04, poseBodyZ: -0.05
     },
     alluring: {
       eyeScaleL: 0.58, eyeScaleR: 0.64, eyeSmileL: 0.3, eyeSmileR: 0.22,
       eyeballX: 0.12, eyeballY: -0.12, eyeballForm: -0.08,
-      mouthOpen: 0.07, mouthForm: 0.68, cheek: 0.55,
+      mouthOpen: 0.07, mouthForm: 0.38, cheek: 0.55,
       poseAngleZ: 0.34, poseBodyX: 0.14, poseBodyZ: -0.14
     }
   };
@@ -901,10 +901,7 @@
       }
       if (layer.fade === 'mouthOpen') {
         part.transform.opacity = 0;
-        part.bindings.MouthOpen = binding([0, 1], [
-          { opacity: 0, scaleY: 0.92 },
-          { opacity: 1, scaleY: 1.34 }
-        ]);
+        part.bindings.MouthOpen = binding([0, 1], [{ opacity: 0 }, { opacity: 1 }]);
       }
       if (layer.fade === 'mouthClose') {
         part.bindings.MouthOpen = binding([0, 1], [{ opacity: 1 }, { opacity: 0 }]);

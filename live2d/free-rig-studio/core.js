@@ -868,17 +868,17 @@
 
       talkTime += dt;
       if (talkActive && talkTime >= nextSyllable) {
-        nextSyllable = talkTime + 0.07 + random() * 0.09;
-        talkTarget = random() < 0.16 ? 0.08 : 0.48 + random() * 0.52;
-        talkFormTarget = -0.28 + random() * 0.72;
+        nextSyllable = talkTime + 0.09 + random() * 0.06;
+        talkTarget = random() < 0.2 ? 0.04 : 0.28 + random() * 0.47;
+        talkFormTarget = -0.06 + random() * 0.16;
       }
       if (!talkActive) {
         talkTarget = 0;
         talkFormTarget = 0;
       }
-      talkValue += (talkTarget - talkValue) * Math.min(1, dt * (talkActive ? 22 : 15));
+      talkValue += (talkTarget - talkValue) * Math.min(1, dt * (talkActive ? 14 : 15));
       talkFormValue += (talkFormTarget - talkFormValue) *
-        Math.min(1, dt * (talkActive ? 18 : 12));
+        Math.min(1, dt * (talkActive ? 10 : 12));
       if (talkValue < 0.001) talkValue = 0;
       if (Math.abs(talkFormValue) < 0.001) talkFormValue = 0;
 

@@ -583,9 +583,10 @@ test('produces bounded syllabic mouth motion and settles after speech', () => {
     ];
   }
   assert.ok(peak > 0.6);
-  assert.ok(peak <= 1);
+  assert.ok(peak <= 0.75);
   assert.ok(formRange[0] >= -1 && formRange[1] <= 1);
-  assert.ok(formRange[1] - formRange[0] > 0.2);
+  assert.ok(formRange[1] - formRange[0] > 0.05);
+  assert.ok(Math.max(Math.abs(formRange[0]), Math.abs(formRange[1])) <= 0.1);
   assert.ok(gazeRange[0] >= -1 && gazeRange[1] <= 1);
   assert.ok(gazeRange[1] - gazeRange[0] > 0.08);
   runtime.setTalk(false);
