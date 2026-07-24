@@ -618,7 +618,7 @@
         shoulderY,
         {
           WingSwing: binding([-1, 0, 1], [
-            { rotation: 2.4 }, { rotation: 0 }, { rotation: -2.4 }
+            { rotation: 4.8 }, { rotation: 0 }, { rotation: -4.8 }
           ])
         }
       ),
@@ -630,7 +630,7 @@
         shoulderY,
         {
           WingSwing: binding([-1, 0, 1], [
-            { rotation: -2.4 }, { rotation: 0 }, { rotation: 2.4 }
+            { rotation: -4.8 }, { rotation: 0 }, { rotation: 4.8 }
           ])
         }
       ),
@@ -642,7 +642,7 @@
         shoulderY,
         {
           ArmSwing: binding([-1, 0, 1], [
-            { rotation: -1.8 }, { rotation: 0 }, { rotation: 1.8 }
+            { rotation: -3 }, { rotation: 0 }, { rotation: 3 }
           ])
         }
       ),
@@ -654,7 +654,7 @@
         shoulderY,
         {
           ArmSwing: binding([-1, 0, 1], [
-            { rotation: 1.8 }, { rotation: 0 }, { rotation: -1.8 }
+            { rotation: 3 }, { rotation: 0 }, { rotation: -3 }
           ])
         }
       ),
@@ -690,7 +690,7 @@
         waistY + faceWidth * 0.8,
         {
           TailSwing: binding([-1, 0, 1], [
-            { rotation: -4.2 }, { rotation: 0 }, { rotation: 4.2 }
+            { rotation: -7.5 }, { rotation: 0 }, { rotation: 7.5 }
           ])
         }
       ),
@@ -1097,10 +1097,10 @@
     }).forEach(function (part, index) {
       var direction = /_1$/.test(part.name) ? -1 : 1;
       addVerticalSkin(part, 'cloak_' + index, [
-        { id: 'root', name: 'Cloak root', y: 0.08, parameterId: 'CloakSwing', angleScale: direction * 0.3 },
-        { id: 'upper', name: 'Cloak upper', y: 0.34, parameterId: 'CloakSwing', angleScale: direction * 0.6 },
-        { id: 'lower', name: 'Cloak lower', y: 0.66, parameterId: 'CloakFlutter', angleScale: direction * 1.2 },
-        { id: 'tip', name: 'Cloak tip', y: 0.9, parameterId: 'CloakFlutter', angleScale: direction * 1.8 }
+        { id: 'root', name: 'Cloak root', y: 0.08, parameterId: 'CloakSwing', angleScale: direction * 0.5 },
+        { id: 'upper', name: 'Cloak upper', y: 0.34, parameterId: 'CloakSwing', angleScale: direction * 1.0 },
+        { id: 'lower', name: 'Cloak lower', y: 0.66, parameterId: 'CloakFlutter', angleScale: direction * 2.0 },
+        { id: 'tip', name: 'Cloak tip', y: 0.9, parameterId: 'CloakFlutter', angleScale: direction * 3.0 }
       ], { fadeStart: 0.03, name: 'Cloak cloth chain' });
     });
 
@@ -1108,10 +1108,10 @@
       return node.type === 'part' && node.name === 'tail';
     }).forEach(function (tailPart, index) {
       addVerticalSkin(tailPart, 'tail_' + index, [
-        { id: 'root', name: 'Tail root', y: 0.07, parameterId: 'TailSwing', angleScale: 0.8 },
-        { id: 'upper', name: 'Tail upper', y: 0.32, parameterId: 'TailSwing', angleScale: 1.8 },
-        { id: 'lower', name: 'Tail lower', y: 0.62, parameterId: 'TailCurl', angleScale: 3.2 },
-        { id: 'tip', name: 'Tail tip', y: 0.9, parameterId: 'TailCurl', angleScale: 5.4 }
+        { id: 'root', name: 'Tail root', y: 0.07, parameterId: 'TailSwing', angleScale: 1.2 },
+        { id: 'upper', name: 'Tail upper', y: 0.32, parameterId: 'TailSwing', angleScale: 2.7 },
+        { id: 'lower', name: 'Tail lower', y: 0.62, parameterId: 'TailCurl', angleScale: 4.8 },
+        { id: 'tip', name: 'Tail tip', y: 0.9, parameterId: 'TailCurl', angleScale: 8.1 }
       ], { fadeStart: 0.02, name: 'Tail flexible chain' });
     });
 
@@ -1120,10 +1120,10 @@
     }).forEach(function (part, index) {
       var direction = /_1$/.test(part.name) ? -1 : 1;
       addVerticalSkin(part, 'arm_' + index, [
-        { id: 'root', name: 'Upper arm root', y: 0.08, parameterId: 'ArmSwing', angleScale: direction * 0.45 },
-        { id: 'upper', name: 'Upper arm', y: 0.34, parameterId: 'ArmSwing', angleScale: direction * 0.9 },
-        { id: 'lower', name: 'Forearm', y: 0.65, parameterId: 'ArmFollow', angleScale: direction * 1.7 },
-        { id: 'hand', name: 'Hand', y: 0.9, parameterId: 'ArmFollow', angleScale: direction * 2.3 }
+        { id: 'root', name: 'Upper arm root', y: 0.08, parameterId: 'ArmSwing', angleScale: direction * 0.7 },
+        { id: 'upper', name: 'Upper arm', y: 0.34, parameterId: 'ArmSwing', angleScale: direction * 1.4 },
+        { id: 'lower', name: 'Forearm', y: 0.65, parameterId: 'ArmFollow', angleScale: direction * 2.5 },
+        { id: 'hand', name: 'Hand', y: 0.9, parameterId: 'ArmFollow', angleScale: direction * 3.5 }
       ], { fadeStart: 0.02, name: 'Arm articulated chain' });
     });
 
@@ -3302,6 +3302,7 @@
       });
       changed = true;
     }
+    var postPhysicsOffsets = null;
     if (isEmbedded) {
       var performanceScale = reducedMotionQuery.matches ? 0.35 : 1;
       var performance = performanceRuntime.step(dt, performanceScale);
@@ -3318,8 +3319,16 @@
       );
       parameterValues.EyeSmileL = embeddedExpression.eyeSmileL;
       parameterValues.EyeSmileR = embeddedExpression.eyeSmileR;
-      parameterValues.EyeBallX = embeddedExpression.eyeballX;
-      parameterValues.EyeBallY = embeddedExpression.eyeballY;
+      parameterValues.EyeBallX = Core.clamp(
+        Number(embeddedExpression.eyeballX || 0) + Number(performance.talkGazeX || 0),
+        -1,
+        1
+      );
+      parameterValues.EyeBallY = Core.clamp(
+        Number(embeddedExpression.eyeballY || 0) + Number(performance.talkGazeY || 0),
+        -1,
+        1
+      );
       parameterValues.EyeBallForm = embeddedExpression.eyeballForm;
       parameterValues.MouthForm = Core.clamp(
         Number(embeddedExpression.mouthForm || 0) + Number(performance.talkMouthForm || 0),
@@ -3338,7 +3347,22 @@
         BodyAngleZ: Number(performance.offsets.BodyAngleZ || 0) +
           Number(embeddedExpression.poseBodyZ || 0)
       });
+      var postPhysicsIds = {
+        WingSwing: true,
+        WingFlap: true,
+        TailSwing: true,
+        TailCurl: true,
+        CloakSwing: true,
+        CloakFlutter: true,
+        ArmSwing: true,
+        ArmFollow: true
+      };
+      postPhysicsOffsets = {};
       Object.keys(performanceOffsets).forEach(function (parameterId) {
+        if (postPhysicsIds[parameterId]) {
+          postPhysicsOffsets[parameterId] = Number(performanceOffsets[parameterId] || 0);
+          return;
+        }
         var parameter = model.parameters.find(function (entry) {
           return entry.id === parameterId;
         });
@@ -3355,6 +3379,20 @@
       var physicsOutputs = physicsRuntime.step(parameterValues, dt);
       Object.keys(physicsOutputs).forEach(function (parameterId) {
         parameterValues[parameterId] = physicsOutputs[parameterId];
+        changed = true;
+      });
+    }
+    if (postPhysicsOffsets) {
+      Object.keys(postPhysicsOffsets).forEach(function (parameterId) {
+        var parameter = model.parameters.find(function (entry) {
+          return entry.id === parameterId;
+        });
+        if (!parameter || parameterValues[parameterId] == null) return;
+        parameterValues[parameterId] = Core.clamp(
+          Number(parameterValues[parameterId]) + Number(postPhysicsOffsets[parameterId] || 0),
+          parameter.min,
+          parameter.max
+        );
         changed = true;
       });
     }

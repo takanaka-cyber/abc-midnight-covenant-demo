@@ -50,7 +50,7 @@
       quest: "QUEST 03 / SKILL SELECT",
       prompt: "相談前に、<em>最優先で確かめたいこと</em>は？",
       line: "いい選び方ね。契約より先に、条件を確かめる。それがあなたの武器になる。",
-      expression: "serious",
+      expression: "smile",
       options: ["治療の時間・流れ", "痛みへの配慮", "費用・支払い条件", "プライバシー・担当者", "まず全体を聞きたい"],
     },
     {

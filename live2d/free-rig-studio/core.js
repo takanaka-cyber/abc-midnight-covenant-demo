@@ -750,6 +750,11 @@
     var talkValue = 0;
     var talkFormTarget = 0;
     var talkFormValue = 0;
+    var gazeTargetX = 0;
+    var gazeTargetY = 0;
+    var gazeX = 0;
+    var gazeY = 0;
+    var nextGazeTime = 0;
     var gestureName = null;
     var gestureTime = 0;
 
@@ -791,6 +796,8 @@
       if (!talkActive) {
         talkTarget = 0;
         talkFormTarget = 0;
+        gazeTargetX = 0;
+        gazeTargetY = 0;
       }
     }
 
@@ -805,24 +812,47 @@
         AngleY: 0,
         AngleZ: 0,
         BodyAngleX: 0,
+        BodyAngleY: 0,
         BodyAngleZ: 0,
         ShoulderMotion: 0,
+        HipShift: 0,
         WingSwing: 0,
-        TailSwing: 0
+        WingFlap: 0,
+        TailSwing: 0,
+        TailCurl: 0,
+        CloakSwing: 0,
+        CloakFlutter: 0,
+        ArmSwing: 0,
+        ArmFollow: 0
       };
       if (!gestureName) return result;
       gestureTime += deltaTime;
       var progress;
       if (gestureName === 'nod') {
-        progress = clamp(gestureTime / 0.72, 0, 1);
-        result.AngleY = Math.sin(progress * Math.PI * 2) * -0.23;
-        result.BodyAngleX = Math.sin(progress * Math.PI) * 0.08;
+        progress = clamp(gestureTime / 0.9, 0, 1);
+        result.AngleY = Math.sin(progress * Math.PI * 2) * -0.34;
+        result.BodyAngleX = Math.sin(progress * Math.PI) * 0.13;
+        result.ShoulderMotion = Math.sin(progress * Math.PI) * 0.1;
+        result.HipShift = Math.sin(progress * Math.PI) * -0.05;
       } else if (gestureName === 'invite') {
-        progress = clamp(gestureTime / 1.05, 0, 1);
-        result.AngleZ = Math.sin(progress * Math.PI) * 0.24;
-        result.BodyAngleZ = Math.sin(progress * Math.PI) * -0.12;
-        result.WingSwing = Math.sin(progress * Math.PI) * 0.16;
-        result.TailSwing = Math.sin(progress * Math.PI * 1.5) * 0.12;
+        progress = clamp(gestureTime / 1.8, 0, 1);
+        var rise = Math.sin(progress * Math.PI);
+        var flourish = Math.sin(progress * Math.PI * 2);
+        result.AngleX = rise * 0.08;
+        result.AngleZ = rise * 0.38;
+        result.BodyAngleX = rise * 0.16;
+        result.BodyAngleY = flourish * 0.08;
+        result.BodyAngleZ = rise * -0.22;
+        result.ShoulderMotion = rise * 0.16;
+        result.HipShift = rise * 0.14;
+        result.WingSwing = rise * 0.28;
+        result.WingFlap = flourish * 0.22;
+        result.TailSwing = Math.sin(progress * Math.PI * 1.5) * 0.24;
+        result.TailCurl = rise * 0.28;
+        result.CloakSwing = rise * -0.18;
+        result.CloakFlutter = flourish * 0.12;
+        result.ArmSwing = rise * 0.12;
+        result.ArmFollow = flourish * 0.08;
       } else {
         progress = 1;
       }
@@ -852,11 +882,28 @@
       if (talkValue < 0.001) talkValue = 0;
       if (Math.abs(talkFormValue) < 0.001) talkFormValue = 0;
 
+      if (talkActive && talkTime >= nextGazeTime) {
+        nextGazeTime = talkTime + 0.45 + random() * 0.65;
+        gazeTargetX = -0.18 + random() * 0.36;
+        gazeTargetY = -0.07 + random() * 0.14;
+      }
+      if (!talkActive) {
+        gazeTargetX = 0;
+        gazeTargetY = 0;
+      }
+      gazeX += (gazeTargetX - gazeX) * Math.min(1, dt * 5.5);
+      gazeY += (gazeTargetY - gazeY) * Math.min(1, dt * 5.5);
+
       var gesture = sampleGesture(dt);
       if (talkActive) {
-        gesture.AngleY += Math.sin(talkTime * 5.1) * 0.045;
-        gesture.AngleX += Math.sin(talkTime * 2.7 + 0.8) * 0.025;
-        gesture.ShoulderMotion += Math.sin(talkTime * 3.4) * 0.035;
+        gesture.AngleY += Math.sin(talkTime * 4.4) * 0.1;
+        gesture.AngleX += Math.sin(talkTime * 2.4 + 0.8) * 0.055;
+        gesture.AngleZ += Math.sin(talkTime * 1.9 + 0.4) * 0.04;
+        gesture.BodyAngleZ += Math.sin(talkTime * 2.1 + 1.1) * 0.065;
+        gesture.ShoulderMotion += Math.sin(talkTime * 3.1) * 0.09;
+        gesture.HipShift += Math.sin(talkTime * 1.55 + 0.3) * 0.055;
+        gesture.ArmSwing += Math.sin(talkTime * 2.3 + 0.8) * 0.045;
+        gesture.CloakFlutter += Math.sin(talkTime * 2.7 + 1.6) * 0.035;
       }
       Object.keys(gesture).forEach(function (key) {
         gesture[key] *= scale;
@@ -865,6 +912,8 @@
         expression: deepClone(current),
         talkMouth: talkValue,
         talkMouthForm: talkFormValue,
+        talkGazeX: gazeX,
+        talkGazeY: gazeY,
         offsets: gesture
       };
     }
@@ -883,6 +932,11 @@
       talkValue = 0;
       talkFormTarget = 0;
       talkFormValue = 0;
+      gazeTargetX = 0;
+      gazeTargetY = 0;
+      gazeX = 0;
+      gazeY = 0;
+      nextGazeTime = 0;
       gestureName = null;
       gestureTime = 0;
     }
@@ -900,6 +954,8 @@
           talking: talkActive,
           talkMouth: talkValue,
           talkMouthForm: talkFormValue,
+          talkGazeX: gazeX,
+          talkGazeY: gazeY,
           gesture: gestureName
         };
       }

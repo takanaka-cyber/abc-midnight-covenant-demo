@@ -569,6 +569,7 @@ test('produces bounded syllabic mouth motion and settles after speech', () => {
   runtime.setTalk(true);
   let peak = 0;
   let formRange = [Infinity, -Infinity];
+  let gazeRange = [Infinity, -Infinity];
   for (let index = 0; index < 120; index += 1) {
     const frame = runtime.step(1 / 60, 1);
     peak = Math.max(peak, frame.talkMouth);
@@ -576,16 +577,23 @@ test('produces bounded syllabic mouth motion and settles after speech', () => {
       Math.min(formRange[0], frame.talkMouthForm),
       Math.max(formRange[1], frame.talkMouthForm)
     ];
+    gazeRange = [
+      Math.min(gazeRange[0], frame.talkGazeX),
+      Math.max(gazeRange[1], frame.talkGazeX)
+    ];
   }
   assert.ok(peak > 0.6);
   assert.ok(peak <= 1);
   assert.ok(formRange[0] >= -1 && formRange[1] <= 1);
   assert.ok(formRange[1] - formRange[0] > 0.2);
+  assert.ok(gazeRange[0] >= -1 && gazeRange[1] <= 1);
+  assert.ok(gazeRange[1] - gazeRange[0] > 0.08);
   runtime.setTalk(false);
   let frame;
   for (let index = 0; index < 60; index += 1) frame = runtime.step(1 / 60, 1);
   assert.ok(frame.talkMouth < 0.001);
   assert.ok(Math.abs(frame.talkMouthForm) < 0.001);
+  assert.ok(Math.abs(frame.talkGazeX) < 0.01);
 });
 
 test('plays a gesture once and returns to a neutral offset', () => {
@@ -602,4 +610,38 @@ test('plays a gesture once and returns to a neutral offset', () => {
   assert.ok(peak > 0.15);
   assert.equal(runtime.getDiagnostics().gesture, null);
   assert.ok(Math.abs(frame.offsets.AngleY) < 0.001);
+});
+
+test('drives a full-body invite gesture including post-physics appendages', () => {
+  const runtime = Core.createPerformanceRuntime({
+    neutral: { mouthOpen: 0 }
+  }, 987);
+  runtime.triggerGesture('invite');
+  const peaks = {
+    AngleZ: 0,
+    BodyAngleZ: 0,
+    HipShift: 0,
+    WingSwing: 0,
+    WingFlap: 0,
+    TailSwing: 0,
+    TailCurl: 0,
+    CloakSwing: 0,
+    ArmSwing: 0
+  };
+  for (let index = 0; index < 130; index += 1) {
+    const frame = runtime.step(1 / 60, 1);
+    Object.keys(peaks).forEach((key) => {
+      peaks[key] = Math.max(peaks[key], Math.abs(frame.offsets[key]));
+    });
+  }
+  assert.ok(peaks.AngleZ > 0.3);
+  assert.ok(peaks.BodyAngleZ > 0.18);
+  assert.ok(peaks.HipShift > 0.1);
+  assert.ok(peaks.WingSwing > 0.2);
+  assert.ok(peaks.WingFlap > 0.18);
+  assert.ok(peaks.TailSwing > 0.18);
+  assert.ok(peaks.TailCurl > 0.2);
+  assert.ok(peaks.CloakSwing > 0.14);
+  assert.ok(peaks.ArmSwing > 0.09);
+  assert.equal(runtime.getDiagnostics().gesture, null);
 });

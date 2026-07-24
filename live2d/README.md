@@ -12,7 +12,7 @@
 
 このPoCは公式Live2D Cubism形式ではない。1枚絵をパーツ分けし、WebGLメッシュとスプリング物理でLive2D風に動かす方式を採る。
 
-## 現在の実装（v9 performance）
+## 現在の実装（v10 full-body performance）
 
 - ユーザー採用元絵: `source/abc_succubus_live2d_master_v5_user_approved.png`
 - 透過・デスピル元絵: `source/abc_succubus_live2d_master_v5.png`
@@ -27,12 +27,14 @@
 - `prefers-reduced-motion`: iframeを非表示にして静止画へ固定
 - upstream license: `vendor/anime25d/LICENSE`
 
-v9のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩、腰、左右脚、
+v10のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩、腰、左右脚、
 髪、左右翼、尾、左右外套、両腕、呼吸、胸部局所スプリングを独立して駆動する。
 全身Warpを親に、上半身・腰・頭・肩・翼根・外套根・尾根・脚根を子へ置き、
 柔軟部は高密度Meshと複数BoneのSkinningで位相差を作る。
 加えて、500msの表情クロスフェード、音節単位の口開閉・口形、笑顔・誘惑表情、
-一回性の頷き・誘導ジェスチャーをLPの会話状態から駆動する。
+一回性の頷き・誘導ジェスチャーをLPの会話状態から駆動する。会話中は視線・頭・
+肩・腰・腕を連動させ、誘導ジェスチャーでは物理演算後に翼・尾・外套の演技を
+加算することで、物理出力によるモーション消失を防ぐ。
 
 ### Cubism標準パラメーターとの対応
 
@@ -97,7 +99,7 @@ v9のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩�
 4. まばたき、呼吸、髪・衣装、胸の順に単体検証
 5. LPへ組み込み、静止フォールバックと負荷を検証
 
-## v9ローカルQA
+## v10ローカルQA
 
 - PSD: 887×1774、35レイヤー、readback成功
 - 可視RGB再合成: 欠損 `0px`、余分 `0px`、RGB最大誤差 `0`
@@ -109,7 +111,8 @@ v9のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩�
 - 原寸887×1774: 中立、実Idle、全パラメーター正負端で背景漏れ・黒線なし
 - 375×812: 白・マゼンタ・暗背景、4時点の実Idleで継ぎ目なし
 - 375×812: 横overflow 0、発話3口形、誘惑表情・全身ジェスチャーを実画面確認
-- 自動テスト: 23件全件PASS
+- 375×812実測: 約119.8fps、frame interval p95 9.9ms、最大10.4ms
+- 自動テスト: 24件全件PASS
 
 継ぎ目QA証跡は `output/playwright/v26-overlap-neutral-887.png`、
 `output/playwright/v27-overlap-full-positive-887.png`、
@@ -120,5 +123,9 @@ v9のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩�
 `output/playwright/v30-talk-mouth-montage.png`、
 `output/playwright/v30-alluring-375x812.png`、
 `output/playwright/v30-alluring-motion-montage.png`。
+全身演技の追加証跡は `output/playwright/v31-full-body-invite-montage.png`、
+`output/playwright/v31-smile-375x812.png`、
+`output/playwright/v31-alluring-full-body-375x812.png`、
+`output/playwright/v31-full-body-seam-audit.png`。
 
 未完了: 実機での人間による動き評価と、承認後のPages/main反映。
