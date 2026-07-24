@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Free Rig Studio — browser 2D rig editor</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="studio.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">DATA-DRIVEN 2D RIG AUTHORING</p>
+      <h1>Free Rig Studio <span>core P0</span></h1>
+    </div>
+    <div class="toolbar" aria-label="モデル操作">
+      <button id="loadSample" class="primary">ABCサンプル</button>
+      <button id="openPsd">PSDを開く</button>
+      <button id="openJson">JSONを開く</button>
+      <button id="saveJson">JSON保存</button>
+      <button id="resetParameters">Neutral</button>
+      <button id="toggleIdle" aria-pressed="false">Idle OFF</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="panel outliner-panel">
+      <div class="panel-title">
+        <div>
+          <span>MODEL GRAPH</span>
+          <strong>階層</strong>
+        </div>
+        <span id="nodeCount" class="badge">0</span>
+      </div>
+      <div id="outliner" class="outliner" role="tree" aria-label="リグ階層"></div>
+      <section class="validation-card">
+        <div class="section-heading">
+          <strong>検証</strong>
+          <span id="validationState" class="status waiting">未読込</span>
+        </div>
+        <ul id="validationMessages">
+          <li>モデルを読み込んでください</li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="stage-column">
+      <div class="stage-toolbar">
+        <div>
+          <button class="view-mode active" data-background="checker">Checker</button>
+          <button class="view-mode" data-background="dark">Dark</button>
+          <button class="view-mode" data-background="light">Light</button>
+          <button id="toggleMesh" class="active" aria-pressed="true">Mesh</button>
+        </div>
+        <div class="stage-meta">
+          <span id="modelName">NO MODEL</span>
+          <span id="fps">0 fps</span>
+        </div>
+      </div>
+      <div id="stage" class="stage checker">
+        <canvas id="renderCanvas" width="768" height="768"></canvas>
+        <canvas id="overlayCanvas" width="768" height="768"></canvas>
+        <div id="emptyState" class="empty-state">
+          <span>01</span>
+          <h2>構造から動かす</h2>
+          <p>PSDをPartsへ変換し、任意階層・Keyform・Warp・MaskをJSONとして保持します。</p>
+          <button id="emptyLoadSample" class="primary">ABCサンプルを読み込む</button>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span id="statusText">待機中</span>
+        <span id="runtimeStats">parts 0 / params 0 / errors 0</span>
+      </div>
+    </section>
+
+    <aside class="panel inspector-panel">
+      <section>
+        <div class="panel-title compact">
+          <div>
+            <span>PARAMETERS</span>
+            <strong>パラメータ</strong>
+          </div>
+        </div>
+        <div id="parameters" class="parameter-list"></div>
+      </section>
+
+      <section class="inspector-section">
+        <div class="panel-title compact">
+          <div>
+            <span>INSPECTOR</span>
+            <strong id="selectedName">未選択</strong>
+          </div>
+          <span id="selectedType" class="badge">—</span>
+        </div>
+        <div id="inspectorEmpty" class="hint">階層からノードを選択してください。</div>
+        <div id="inspector" hidden>
+          <label class="field">
+            <span>Parent</span>
+            <select id="parentId"></select>
+          </label>
+          <div class="field-grid">
+            <label class="field"><span>X</span><input id="baseX" type="number" step="1"></label>
+            <label class="field"><span>Y</span><input id="baseY" type="number" step="1"></label>
+            <label class="field"><span>Rotation</span><input id="baseRotation" type="number" step="0.1"></label>
+            <label class="field"><span>Opacity</span><input id="baseOpacity" type="number" min="0" max="1" step="0.01"></label>
+            <label class="field"><span>Draw order</span><input id="drawOrder" type="number" step="1"></label>
+          </div>
+          <label class="field" id="maskField">
+            <span>Clipping mask</span>
+            <select id="maskId"></select>
+          </label>
+          <label class="toggle-field">
+            <input id="nodeVisible" type="checkbox">
+            <span>表示する</span>
+          </label>
+          <button id="applyBase" class="wide">基本値を反映</button>
+
+          <div class="divider"></div>
+          <div class="section-heading">
+            <strong>Keyform</strong>
+            <span id="keyState" class="status waiting">未選択</span>
+          </div>
+          <label class="field">
+            <span>対象Parameter</span>
+            <select id="keyParameter"></select>
+          </label>
+          <div class="field-grid">
+            <label class="field"><span>ΔX</span><input id="keyX" type="number" step="1" value="0"></label>
+            <label class="field"><span>ΔY</span><input id="keyY" type="number" step="1" value="0"></label>
+            <label class="field"><span>ΔRotation</span><input id="keyRotation" type="number" step="0.1" value="0"></label>
+            <label class="field"><span>Opacity</span><input id="keyOpacity" type="number" min="0" max="1" step="0.01"></label>
+          </div>
+          <div class="button-row">
+            <button id="saveKey" class="primary">現在値へKey保存</button>
+            <button id="deleteKey">削除</button>
+          </div>
+
+          <div class="divider"></div>
+          <div class="section-heading">
+            <strong>Mesh edit</strong>
+            <span id="meshState" class="status waiting">OFF</span>
+          </div>
+          <p class="hint">Partを選択後、Neutral状態で頂点をドラッグします。元画像のRGBは変更しません。</p>
+          <button id="meshEdit" class="wide" aria-pressed="false">頂点編集を開始</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <input id="psdInput" type="file" accept=".psd" hidden>
+  <input id="jsonInput" type="file" accept=".json,application/json" hidden>
+
+  <script src="../vendor/anime25d/lib/ag-psd.min.js"></script>
+  <script src="../vendor/anime25d/lib/rigger.js"></script>
+  <script src="core.js"></script>
+  <script src="studio.js"></script>
+</body>
+</html>
