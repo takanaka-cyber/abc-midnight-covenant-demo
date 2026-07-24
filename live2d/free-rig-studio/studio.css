@@ -18,6 +18,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   width: 100%;
@@ -488,26 +492,132 @@ select {
   gap: 7px;
 }
 
-.physics-section {
+.physics-section,
+.tool-section {
   border-top: 1px solid var(--line);
 }
 
 .physics-section > .button-row,
-#physicsInspector {
+#physicsInspector,
+.tool-section > .button-row,
+.tool-inspector {
   margin: 0 13px;
 }
 
-.physics-section > .button-row {
+.physics-section > .button-row,
+.tool-selector {
   grid-template-columns: minmax(0, 1fr) auto auto;
   padding-top: 11px;
 }
 
-#physicsInspector {
+#physicsInspector,
+.tool-inspector {
   padding: 11px 0 4px;
 }
 
-#physicsEmpty {
+#physicsEmpty,
+#glueEmpty,
+#skinEmpty {
   padding: 12px 14px 0;
+}
+
+.subsection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 7px;
+  color: #c8cad4;
+  font-size: 10px;
+}
+
+.subsection-heading button,
+.repeat-row button {
+  min-height: 25px;
+  padding: 3px 7px;
+  font-size: 9px;
+}
+
+.mini-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.repeat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.repeat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(58px, .7fr) minmax(58px, .7fr) auto;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0d0e13;
+}
+
+.repeat-row.bone-row {
+  grid-template-columns: 1fr 1fr;
+}
+
+.repeat-row.weight-row {
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+}
+
+.repeat-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.repeat-row input,
+.repeat-row select {
+  width: 100%;
+  height: 27px;
+  padding: 3px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: #0a0b0f;
+  color: var(--text);
+  font-size: 9px;
+}
+
+.repeat-row .row-remove {
+  align-self: end;
+  color: var(--red);
+}
+
+.compact-list {
+  max-height: 228px;
+  overflow: auto;
+}
+
+.weight-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.weight-index {
+  color: var(--gold);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.atlas-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.inline-hint {
+  padding: 9px 0 0;
 }
 
 .divider {

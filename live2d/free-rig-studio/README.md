@@ -1,4 +1,4 @@
-# Free Rig Studio — core P1
+# Free Rig Studio — core P2
 
 Live2D Cubismの公開機能を棚卸しした上で、キャラクター品質に直結する
 データ構造だけをブラウザ上へ再構成する検証実装。
@@ -23,8 +23,22 @@ Live2Dの独自ファイルを解析・互換実装するものではない。
 - source path由来の安定node ID
 - Warp control pointの直接編集とParameter別Keyform保存
 - 任意Parameter間を接続するspring Physics group
-- Physics groupの追加・削除・設定UI
+- Physics groupの複数Input / Output編集UI
+- 安定node IDによるPSD再import merge
+- PSD画像・階層更新時のKeyform / Warp / Mesh / Physics / Glue / Skin保持
+- 頂点pair・directional weight・compatibilityを持つGlue
+- 階層Bone・parameter angle・vertex weightを持つSkinning
+- 縦方向のSkin weight自動配分
+- 可逆なTexture Atlas生成・再生成・source texture復元
+- Atlasの重複・範囲外検証と再import後の自動再生成
 - 全Parameter極値での有限頂点監査
+
+Glue、Skinning、Texture Atlasの操作概念はLive2D Cubismの公開マニュアルを
+参照し、独自JSON schemaと独自評価器として実装している。
+
+- [Glue](https://docs.live2d.com/en/cubism-editor-manual/glue/)
+- [Skinning](https://docs.live2d.com/en/cubism-editor-manual/skinning/)
+- [Texture Atlas](https://docs.live2d.com/en/cubism-editor-manual/texture-atlas-edit/)
 
 ## 起動
 
@@ -48,14 +62,13 @@ node --test live2d/free-rig-studio/tests/core.test.mjs
 
 ## 現在の制限 / 未実装
 
-- 同一PSD再import時の既存編集内容の自動merge
-- Physics UIでの複数input / output行編集
 - 複数Parameterの2D格子補間
-- Glue / Skinning / ArtPath
-- 汎用Physics group authoring UI
+- Glue compatibilityのParameter別Keyform
+- Skinning用Mesh自動分割とGlue自動生成
+- 複数Texture Atlasと手動配置・回転
+- ArtPath
 - Undo stack
 - Timeline / Graph Editor
-- Texture Atlas
 - LP runtime用の軽量export
 
-これらは機能棚卸しから削除したのではなく、P0の後続として残す。
+Live2D独自形式の読込・出力や互換性は対象外。

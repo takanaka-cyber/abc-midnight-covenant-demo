@@ -87,6 +87,17 @@
     ];
   }
 
+  function multiplyMatrices(left, right) {
+    return [
+      left[0] * right[0] + left[2] * right[1],
+      left[1] * right[0] + left[3] * right[1],
+      left[0] * right[2] + left[2] * right[3],
+      left[1] * right[2] + left[3] * right[3],
+      left[0] * right[4] + left[2] * right[5] + left[4],
+      left[1] * right[4] + left[3] * right[5] + left[5]
+    ];
+  }
+
   function createRectMesh(width, height, columns, rows) {
     columns = Math.max(1, columns | 0);
     rows = Math.max(1, rows | 0);
@@ -256,6 +267,287 @@
     return { x: point.x + dx + outsideX * 0, y: point.y + dy + outsideY * 0 };
   }
 
+  function sourceBaseTransform(node) {
+    return identityTransform(node && node.source && node.source.baseTransform
+      ? node.source.baseTransform : node && node.transform);
+  }
+
+  function mergeTransformDelta(currentNode, importedNode) {
+    var current = identityTransform(currentNode.transform);
+    var currentBase = sourceBaseTransform(currentNode);
+    var imported = identityTransform(importedNode.transform);
+    var importedBase = sourceBaseTransform(importedNode);
+    ['x', 'y', 'pivotX', 'pivotY', 'rotation', 'drawOrder'].forEach(function (key) {
+      imported[key] = importedBase[key] + (current[key] - currentBase[key]);
+    });
+    ['scaleX', 'scaleY'].forEach(function (key) {
+      imported[key] = currentBase[key] === 0
+        ? importedBase[key] : importedBase[key] * current[key] / currentBase[key];
+    });
+    // PSD owns source opacity; authoring owns only the geometric delta.
+    imported.opacity = importedBase.opacity;
+    return imported;
+  }
+
+  function scalePreservedVertices(currentNode, importedNode) {
+    if (!currentNode.mesh || !importedNode.mesh ||
+        currentNode.mesh.vertices.length !== importedNode.mesh.vertices.length) {
+      return importedNode.mesh;
+    }
+    var currentSize = currentNode.source && currentNode.source.size;
+    var importedSize = importedNode.source && importedNode.source.size;
+    var scaleX = currentSize && importedSize && currentSize.width
+      ? importedSize.width / currentSize.width : 1;
+    var scaleY = currentSize && importedSize && currentSize.height
+      ? importedSize.height / currentSize.height : 1;
+    var merged = deepClone(importedNode.mesh);
+    merged.vertices = currentNode.mesh.vertices.map(function (vertex) {
+      return [Number(vertex[0]) * scaleX, Number(vertex[1]) * scaleY];
+    });
+    return merged;
+  }
+
+  function filterRigReferences(nextModel) {
+    var nodesById = {};
+    var parametersById = {};
+    nextModel.nodes.forEach(function (node) { nodesById[node.id] = node; });
+    nextModel.parameters.forEach(function (parameter) { parametersById[parameter.id] = parameter; });
+    nextModel.nodes.forEach(function (node) {
+      if (node.parentId && !nodesById[node.parentId]) node.parentId = null;
+      if (node.type === 'part') {
+        node.maskIds = (node.maskIds || []).filter(function (id) {
+          return nodesById[id] && nodesById[id].type === 'part';
+        });
+      }
+      Object.keys(node.bindings || {}).forEach(function (parameterId) {
+        if (!parametersById[parameterId]) delete node.bindings[parameterId];
+      });
+    });
+    nextModel.physics = (nextModel.physics || []).filter(function (group) {
+      group.inputs = (group.inputs || []).filter(function (input) {
+        return Boolean(parametersById[input.parameterId]);
+      });
+      group.outputs = (group.outputs || []).filter(function (output) {
+        return Boolean(parametersById[output.parameterId]);
+      });
+      return group.inputs.length && group.outputs.length;
+    });
+    nextModel.glues = (nextModel.glues || []).filter(function (glue) {
+      var partA = nodesById[glue.partAId];
+      var partB = nodesById[glue.partBId];
+      if (!partA || !partB || partA.type !== 'part' || partB.type !== 'part') return false;
+      glue.bindings = (glue.bindings || []).filter(function (entry) {
+        return entry.vertexA >= 0 && entry.vertexA < partA.mesh.vertices.length &&
+          entry.vertexB >= 0 && entry.vertexB < partB.mesh.vertices.length;
+      });
+      return glue.bindings.length > 0;
+    });
+    nextModel.skins = (nextModel.skins || []).filter(function (skin) {
+      var part = nodesById[skin.partId];
+      if (!part || part.type !== 'part') return false;
+      skin.bones = (skin.bones || []).filter(function (bone) {
+        return !bone.parameterId || parametersById[bone.parameterId];
+      });
+      var bonesById = {};
+      skin.bones.forEach(function (bone) { bonesById[bone.id] = bone; });
+      skin.bones.forEach(function (bone) {
+        if (bone.parentId && !bonesById[bone.parentId]) bone.parentId = null;
+      });
+      skin.weights = (skin.weights || []).slice(0, part.mesh.vertices.length).map(function (weights) {
+        return (weights || []).filter(function (weight) {
+          return bonesById[weight.boneId];
+        });
+      });
+      while (skin.weights.length < part.mesh.vertices.length) skin.weights.push([]);
+      return skin.bones.length > 0;
+    });
+  }
+
+  function mergeReimportedModel(currentModel, importedModel) {
+    var current = deepClone(currentModel);
+    var imported = deepClone(importedModel);
+    var currentById = {};
+    var importedIds = {};
+    var matched = 0;
+    var newNodes = 0;
+    current.nodes.forEach(function (node) { currentById[node.id] = node; });
+
+    var mergedNodes = imported.nodes.map(function (nextNode) {
+      importedIds[nextNode.id] = true;
+      var oldNode = currentById[nextNode.id];
+      if (!oldNode || oldNode.type !== nextNode.type) {
+        newNodes++;
+        return nextNode;
+      }
+      matched++;
+      if (!(nextNode.source && nextNode.source.kind)) return deepClone(oldNode);
+      var merged = deepClone(nextNode);
+      merged.transform = mergeTransformDelta(oldNode, nextNode);
+      merged.bindings = deepClone(oldNode.bindings || {});
+      if (merged.type === 'part') {
+        merged.mesh = scalePreservedVertices(oldNode, nextNode);
+        merged.maskIds = deepClone(oldNode.maskIds || []);
+      }
+      return merged;
+    });
+
+    current.nodes.forEach(function (node) {
+      if (!importedIds[node.id] && !(node.source && node.source.kind)) {
+        mergedNodes.push(deepClone(node));
+      }
+    });
+
+    var parameterIds = {};
+    var parameters = imported.parameters.map(function (parameter) {
+      parameterIds[parameter.id] = true;
+      var oldParameter = current.parameters.find(function (entry) {
+        return entry.id === parameter.id;
+      });
+      return deepClone(oldParameter || parameter);
+    });
+    current.parameters.forEach(function (parameter) {
+      if (!parameterIds[parameter.id]) parameters.push(deepClone(parameter));
+    });
+
+    imported.nodes.forEach(function (node) {
+      if (node.source && node.source.kind && !node.source.baseTransform) {
+        node.source.baseTransform = identityTransform(node.transform);
+      }
+    });
+    mergedNodes.forEach(function (node) {
+      if (node.source && node.source.kind) {
+        var importedNode = imported.nodes.find(function (entry) { return entry.id === node.id; });
+        node.source.baseTransform = identityTransform(
+          importedNode && importedNode.source && importedNode.source.baseTransform
+            ? importedNode.source.baseTransform : importedNode && importedNode.transform
+        );
+      }
+    });
+
+    var nextModel = {
+      version: VERSION,
+      meta: Object.assign({}, imported.meta || {}, {
+        generator: 'Free Rig Studio core P2',
+        reimportedFrom: current.meta && current.meta.name || null
+      }),
+      canvas: deepClone(imported.canvas),
+      parameters: parameters,
+      textures: deepClone(imported.textures),
+      nodes: mergedNodes,
+      physics: deepClone(current.physics || imported.physics || []),
+      glues: deepClone(current.glues || []),
+      skins: deepClone(current.skins || []),
+      textureAtlases: [],
+      atlasSettings: deepClone(current.atlasSettings || null)
+    };
+    filterRigReferences(nextModel);
+    var validation = validateModel(nextModel);
+    if (!validation.ok) throw new Error(validation.errors.join('\n'));
+    return {
+      model: nextModel,
+      report: {
+        matched: matched,
+        newNodes: newNodes,
+        removed: current.nodes.filter(function (node) {
+          return node.source && node.source.kind && !importedIds[node.id];
+        }).length,
+        preservedRigNodes: mergedNodes.filter(function (node) {
+          return !(node.source && node.source.kind);
+        }).length,
+        atlasInvalidated: Boolean((current.textureAtlases || []).length)
+      }
+    };
+  }
+
+  function nextPowerOfTwo(value) {
+    var result = 1;
+    while (result < value) result *= 2;
+    return result;
+  }
+
+  function tryPackTextureRects(textures, width, height, padding) {
+    var entries = [];
+    var x = padding;
+    var y = padding;
+    var shelfHeight = 0;
+    for (var index = 0; index < textures.length; index++) {
+      var texture = textures[index];
+      if (texture.width + padding * 2 > width || texture.height + padding * 2 > height) {
+        return null;
+      }
+      if (x + texture.width + padding > width) {
+        x = padding;
+        y += shelfHeight + padding;
+        shelfHeight = 0;
+      }
+      if (y + texture.height + padding > height) return null;
+      entries.push({
+        textureId: texture.id,
+        x: x,
+        y: y,
+        width: texture.width,
+        height: texture.height
+      });
+      x += texture.width + padding;
+      shelfHeight = Math.max(shelfHeight, texture.height);
+    }
+    return entries;
+  }
+
+  function packTextureRects(textures, options) {
+    options = options || {};
+    var padding = Math.max(0, Number(options.padding == null ? 2 : options.padding) | 0);
+    var sorted = (textures || []).map(function (texture) {
+      return {
+        id: texture.id,
+        width: Number(texture.width),
+        height: Number(texture.height)
+      };
+    }).sort(function (left, right) {
+      return right.height - left.height || right.width - left.width ||
+        String(left.id).localeCompare(String(right.id));
+    });
+    if (!sorted.length) return { ok: false, errors: ['textures are required'], entries: [] };
+    if (sorted.some(function (texture) {
+      return !texture.id || !(texture.width > 0) || !(texture.height > 0);
+    })) return { ok: false, errors: ['texture dimensions must be positive'], entries: [] };
+
+    var width = Number(options.width || 0);
+    var height = Number(options.height || 0);
+    if (!width || !height) {
+      var totalArea = sorted.reduce(function (sum, texture) {
+        return sum + (texture.width + padding) * (texture.height + padding);
+      }, 0);
+      var largest = sorted.reduce(function (value, texture) {
+        return Math.max(value, texture.width + padding * 2, texture.height + padding * 2);
+      }, 0);
+      width = height = Math.max(256, nextPowerOfTwo(Math.max(largest, Math.sqrt(totalArea))));
+    }
+    var entries = tryPackTextureRects(sorted, width, height, padding);
+    while (!entries && !options.width && width < 8192) {
+      width *= 2;
+      height *= 2;
+      entries = tryPackTextureRects(sorted, width, height, padding);
+    }
+    if (!entries) {
+      return {
+        ok: false,
+        width: width,
+        height: height,
+        errors: ['textures do not fit in atlas'],
+        entries: []
+      };
+    }
+    return {
+      ok: true,
+      width: width,
+      height: height,
+      padding: padding,
+      entries: entries,
+      errors: []
+    };
+  }
+
   function validateModel(model) {
     var errors = [];
     if (!model || typeof model !== 'object') return { ok: false, errors: ['model is required'] };
@@ -400,6 +692,114 @@
       }
     });
 
+    var gluesById = {};
+    (model.glues || []).forEach(function (glue) {
+      if (!glue.id) errors.push('glue id is required');
+      else if (gluesById[glue.id]) errors.push('duplicate glue id: ' + glue.id);
+      else gluesById[glue.id] = glue;
+      var partA = nodesById[glue.partAId];
+      var partB = nodesById[glue.partBId];
+      if (!partA || partA.type !== 'part') errors.push('invalid glue part A: ' + glue.id);
+      if (!partB || partB.type !== 'part') errors.push('invalid glue part B: ' + glue.id);
+      if (glue.partAId === glue.partBId) errors.push('glue parts must differ: ' + glue.id);
+      if (!Number.isFinite(Number(glue.compatibility)) ||
+          Number(glue.compatibility) < 0 || Number(glue.compatibility) > 1) {
+        errors.push('glue compatibility must be between 0 and 1: ' + glue.id);
+      }
+      if (!glue.bindings || !glue.bindings.length) {
+        errors.push('glue binding is required: ' + glue.id);
+      }
+      (glue.bindings || []).forEach(function (entry) {
+        if (!Number.isInteger(Number(entry.vertexA)) || !partA ||
+            entry.vertexA < 0 || entry.vertexA >= partA.mesh.vertices.length) {
+          errors.push('glue vertex A is out of range: ' + glue.id);
+        }
+        if (!Number.isInteger(Number(entry.vertexB)) || !partB ||
+            entry.vertexB < 0 || entry.vertexB >= partB.mesh.vertices.length) {
+          errors.push('glue vertex B is out of range: ' + glue.id);
+        }
+        if (!Number.isFinite(Number(entry.weight)) ||
+            Number(entry.weight) < 0 || Number(entry.weight) > 1) {
+          errors.push('glue weight must be between 0 and 1: ' + glue.id);
+        }
+      });
+    });
+
+    var skinsById = {};
+    (model.skins || []).forEach(function (skin) {
+      if (!skin.id) errors.push('skin id is required');
+      else if (skinsById[skin.id]) errors.push('duplicate skin id: ' + skin.id);
+      else skinsById[skin.id] = skin;
+      var part = nodesById[skin.partId];
+      if (!part || part.type !== 'part') errors.push('invalid skin part: ' + skin.id);
+      var bonesById = {};
+      (skin.bones || []).forEach(function (bone) {
+        if (!bone.id) errors.push('skin bone id is required: ' + skin.id);
+        else if (bonesById[bone.id]) errors.push('duplicate skin bone id: ' + bone.id);
+        else bonesById[bone.id] = bone;
+        if (bone.parameterId && !parametersById[bone.parameterId]) {
+          errors.push('unknown skin parameter: ' + bone.parameterId);
+        }
+        ['pivotX', 'pivotY', 'angleScale', 'angleOffset'].forEach(function (key) {
+          if (bone[key] != null && !Number.isFinite(Number(bone[key]))) {
+            errors.push('skin bone value must be finite: ' + bone.id + ' / ' + key);
+          }
+        });
+      });
+      Object.keys(bonesById).forEach(function (boneId) {
+        var seen = {};
+        var currentBone = bonesById[boneId];
+        while (currentBone) {
+          if (seen[currentBone.id]) {
+            errors.push('skin bone hierarchy cycle at: ' + currentBone.id);
+            break;
+          }
+          seen[currentBone.id] = true;
+          if (currentBone.parentId && !bonesById[currentBone.parentId]) {
+            errors.push('missing skin bone parent: ' + currentBone.parentId);
+            break;
+          }
+          currentBone = currentBone.parentId ? bonesById[currentBone.parentId] : null;
+        }
+      });
+      if (part && Array.isArray(skin.weights) &&
+          skin.weights.length !== part.mesh.vertices.length) {
+        errors.push('skin weight count mismatch: ' + skin.id);
+      }
+      (skin.weights || []).forEach(function (vertexWeights, vertexIndex) {
+        var sum = 0;
+        (vertexWeights || []).forEach(function (weight) {
+          if (!bonesById[weight.boneId]) errors.push('unknown skin weight bone: ' + weight.boneId);
+          if (!Number.isFinite(Number(weight.weight)) || Number(weight.weight) < 0) {
+            errors.push('skin weight must be non-negative: ' + skin.id + ' / ' + vertexIndex);
+          }
+          sum += Number(weight.weight);
+        });
+        if (sum > 1.00001) errors.push('skin vertex weight exceeds 1: ' + skin.id + ' / ' + vertexIndex);
+      });
+    });
+
+    (model.textureAtlases || []).forEach(function (atlas) {
+      if (!texturesById[atlas.textureId]) errors.push('missing atlas texture: ' + atlas.textureId);
+      if (!(atlas.width > 0) || !(atlas.height > 0)) {
+        errors.push('atlas size must be positive: ' + atlas.id);
+      }
+      (atlas.entries || []).forEach(function (entry, entryIndex) {
+        if (entry.x < 0 || entry.y < 0 || entry.x + entry.width > atlas.width ||
+            entry.y + entry.height > atlas.height) {
+          errors.push('atlas entry is out of bounds: ' + entry.sourceTextureId);
+        }
+        (atlas.entries || []).slice(entryIndex + 1).forEach(function (other) {
+          if (entry.x < other.x + other.width && entry.x + entry.width > other.x &&
+              entry.y < other.y + other.height && entry.y + entry.height > other.y) {
+            errors.push(
+              'atlas entries overlap: ' + entry.sourceTextureId + ' / ' + other.sourceTextureId
+            );
+          }
+        });
+      });
+    });
+
     Object.keys(nodesById).forEach(function (id) {
       var seen = {};
       var current = nodesById[id];
@@ -424,6 +824,78 @@
     model.parameters.forEach(function (parameter) { parametersById[parameter.id] = parameter; });
     model.nodes.forEach(function (node) { nodesById[node.id] = node; });
 
+    function skinLocalPositions(part, positions, values) {
+      var skin = (model.skins || []).find(function (entry) {
+        return entry.partId === part.id;
+      });
+      if (!skin || !skin.bones || !skin.bones.length) return positions;
+      var bonesById = {};
+      var bindMatrices = {};
+      var currentMatrices = {};
+      skin.bones.forEach(function (bone) { bonesById[bone.id] = bone; });
+
+      function evaluateBone(bone) {
+        if (currentMatrices[bone.id]) return;
+        var parameter = bone.parameterId ? parametersById[bone.parameterId] : null;
+        var value = parameter
+          ? (values[parameter.id] == null ? parameter.default : Number(values[parameter.id]))
+          : 0;
+        if (parameter) value = clamp(value, parameter.min, parameter.max);
+        var offset = Number(bone.angleOffset || 0);
+        var delta = parameter ? (value - parameter.default) * Number(bone.angleScale || 0) : 0;
+        var bindLocal = matrixFromTransform({
+          x: 0,
+          y: 0,
+          pivotX: Number(bone.pivotX || 0),
+          pivotY: Number(bone.pivotY || 0),
+          rotation: offset,
+          scaleX: 1,
+          scaleY: 1
+        });
+        var currentLocal = matrixFromTransform({
+          x: 0,
+          y: 0,
+          pivotX: Number(bone.pivotX || 0),
+          pivotY: Number(bone.pivotY || 0),
+          rotation: offset + delta,
+          scaleX: 1,
+          scaleY: 1
+        });
+        if (bone.parentId) {
+          evaluateBone(bonesById[bone.parentId]);
+          bindMatrices[bone.id] = multiplyMatrices(bindMatrices[bone.parentId], bindLocal);
+          currentMatrices[bone.id] = multiplyMatrices(currentMatrices[bone.parentId], currentLocal);
+        } else {
+          bindMatrices[bone.id] = bindLocal;
+          currentMatrices[bone.id] = currentLocal;
+        }
+      }
+      skin.bones.forEach(evaluateBone);
+      var skinMatrices = {};
+      skin.bones.forEach(function (bone) {
+        skinMatrices[bone.id] = multiplyMatrices(
+          currentMatrices[bone.id],
+          invertMatrix(bindMatrices[bone.id])
+        );
+      });
+      return positions.map(function (point, vertexIndex) {
+        var weights = skin.weights && skin.weights[vertexIndex] || [];
+        var sum = 0;
+        var result = { x: 0, y: 0 };
+        weights.forEach(function (weight) {
+          var amount = Number(weight.weight);
+          var transformed = transformPoint(skinMatrices[weight.boneId], point);
+          result.x += transformed.x * amount;
+          result.y += transformed.y * amount;
+          sum += amount;
+        });
+        var remaining = Math.max(0, 1 - sum);
+        result.x += point.x * remaining;
+        result.y += point.y * remaining;
+        return result;
+      });
+    }
+
     function evaluate(values) {
       values = values || {};
       var statesById = {};
@@ -434,12 +906,15 @@
       function evaluatePart(part) {
         var state = statesById[part.id];
         var positions = [];
-        for (var index = 0; index < part.mesh.vertices.length; index++) {
-          var base = part.mesh.vertices[index];
-          var point = {
+        var localPositions = part.mesh.vertices.map(function (base, index) {
+          return {
             x: base[0] + state.meshOffsets[index * 2],
             y: base[1] + state.meshOffsets[index * 2 + 1]
           };
+        });
+        localPositions = skinLocalPositions(part, localPositions, values);
+        for (var index = 0; index < part.mesh.vertices.length; index++) {
+          var point = localPositions[index];
           point = transformPoint(matrixFromTransform(state), point);
           var opacity = state.opacity;
           var visible = part.visible !== false;
@@ -472,6 +947,25 @@
       var parts = model.nodes.filter(function (node) {
         return node.type === 'part';
       }).map(evaluatePart);
+      var partsById = {};
+      parts.forEach(function (part) { partsById[part.id] = part; });
+      (model.glues || []).forEach(function (glue) {
+        var partA = partsById[glue.partAId];
+        var partB = partsById[glue.partBId];
+        if (!partA || !partB) return;
+        var compatibility = clamp(Number(glue.compatibility), 0, 1);
+        glue.bindings.forEach(function (binding) {
+          var pointA = partA.positions[binding.vertexA];
+          var pointB = partB.positions[binding.vertexB];
+          var weight = clamp(Number(binding.weight), 0, 1);
+          var targetX = lerp(pointA[0], pointB[0], weight);
+          var targetY = lerp(pointA[1], pointB[1], weight);
+          pointA[0] = lerp(pointA[0], targetX, compatibility);
+          pointA[1] = lerp(pointA[1], targetY, compatibility);
+          pointB[0] = lerp(pointB[0], targetX, compatibility);
+          pointB[1] = lerp(pointB[1], targetY, compatibility);
+        });
+      });
       parts.sort(function (left, right) {
         return left.drawOrder - right.drawOrder;
       });
@@ -575,6 +1069,7 @@
     smoothstep: smoothstep,
     identityTransform: identityTransform,
     matrixFromTransform: matrixFromTransform,
+    multiplyMatrices: multiplyMatrices,
     invertMatrix: invertMatrix,
     transformPoint: transformPoint,
     createRectMesh: createRectMesh,
@@ -582,6 +1077,8 @@
     normalizedOffsets: normalizedOffsets,
     sampleKeyforms: sampleKeyforms,
     applyWarp: applyWarp,
+    mergeReimportedModel: mergeReimportedModel,
+    packTextureRects: packTextureRects,
     validateModel: validateModel,
     createEvaluator: createEvaluator,
     createPhysicsRuntime: createPhysicsRuntime,

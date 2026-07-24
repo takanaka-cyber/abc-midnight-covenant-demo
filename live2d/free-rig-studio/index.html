@@ -11,11 +11,12 @@
   <header class="app-header">
     <div>
       <p class="eyebrow">DATA-DRIVEN 2D RIG AUTHORING</p>
-      <h1>Free Rig Studio <span>core P1</span></h1>
+      <h1>Free Rig Studio <span>core P2</span></h1>
     </div>
     <div class="toolbar" aria-label="モデル操作">
       <button id="loadSample" class="primary">ABCサンプル</button>
       <button id="openPsd">PSDを開く</button>
+      <button id="reimportPsd">PSD再import</button>
       <button id="openJson">JSONを開く</button>
       <button id="saveJson">JSON保存</button>
       <button id="resetParameters">Neutral</button>
@@ -178,31 +179,17 @@
             <span>名前</span>
             <input id="physicsName" type="text">
           </label>
+          <div class="subsection-heading">
+            <strong>Inputs</strong>
+            <button id="addPhysicsInput" type="button">＋ Input</button>
+          </div>
+          <div id="physicsInputs" class="repeat-list"></div>
+          <div class="subsection-heading">
+            <strong>Outputs</strong>
+            <button id="addPhysicsOutput" type="button">＋ Output</button>
+          </div>
+          <div id="physicsOutputs" class="repeat-list"></div>
           <div class="field-grid">
-            <label class="field">
-              <span>Input Parameter</span>
-              <select id="physicsInput"></select>
-            </label>
-            <label class="field">
-              <span>Output Parameter</span>
-              <select id="physicsOutput"></select>
-            </label>
-            <label class="field">
-              <span>Input center</span>
-              <input id="physicsCenter" type="number" step="0.01">
-            </label>
-            <label class="field">
-              <span>Input weight</span>
-              <input id="physicsWeight" type="number" step="0.01">
-            </label>
-            <label class="field">
-              <span>Output scale</span>
-              <input id="physicsScale" type="number" step="0.01">
-            </label>
-            <label class="field">
-              <span>Output offset</span>
-              <input id="physicsOffset" type="number" step="0.01">
-            </label>
             <label class="field">
               <span>Stiffness</span>
               <input id="physicsStiffness" type="number" min="0.01" step="0.1">
@@ -223,10 +210,111 @@
           <button id="applyPhysics" class="wide primary">物理設定を反映</button>
         </div>
       </section>
+
+      <section class="inspector-section tool-section">
+        <div class="panel-title compact">
+          <div>
+            <span>GLUE</span>
+            <strong>境界の接着</strong>
+          </div>
+          <span id="glueCount" class="badge">0</span>
+        </div>
+        <div class="button-row tool-selector">
+          <select id="glueGroup" aria-label="Glue group"></select>
+          <button id="addGlue">追加</button>
+          <button id="deleteGlue">削除</button>
+        </div>
+        <div id="glueEmpty" class="hint">Glueがありません。</div>
+        <div id="glueInspector" class="tool-inspector" hidden>
+          <label class="field"><span>名前</span><input id="glueName" type="text"></label>
+          <div class="field-grid">
+            <label class="field"><span>Part A</span><select id="gluePartA"></select></label>
+            <label class="field"><span>Part B</span><select id="gluePartB"></select></label>
+          </div>
+          <label class="field">
+            <span>Compatibility 0–1</span>
+            <input id="glueCompatibility" type="number" min="0" max="1" step="0.05">
+          </label>
+          <div class="subsection-heading">
+            <strong>Vertex bindings</strong>
+            <button id="addGlueBinding" type="button">＋ Pair</button>
+          </div>
+          <div id="glueBindings" class="repeat-list"></div>
+          <button id="applyGlue" class="wide primary">Glue設定を反映</button>
+        </div>
+      </section>
+
+      <section class="inspector-section tool-section">
+        <div class="panel-title compact">
+          <div>
+            <span>SKINNING</span>
+            <strong>ボーン変形</strong>
+          </div>
+          <span id="skinCount" class="badge">0</span>
+        </div>
+        <div class="button-row tool-selector">
+          <select id="skinGroup" aria-label="Skin group"></select>
+          <button id="addSkin">追加</button>
+          <button id="deleteSkin">削除</button>
+        </div>
+        <div id="skinEmpty" class="hint">Skinningがありません。</div>
+        <div id="skinInspector" class="tool-inspector" hidden>
+          <label class="field"><span>名前</span><input id="skinName" type="text"></label>
+          <label class="field"><span>対象Part</span><select id="skinPart"></select></label>
+          <div class="subsection-heading">
+            <strong>Bones</strong>
+            <button id="addBone" type="button">＋ Bone</button>
+          </div>
+          <div id="skinBones" class="repeat-list"></div>
+          <div class="subsection-heading">
+            <strong>Vertex weights</strong>
+            <span class="mini-actions">
+              <button id="addSkinWeight" type="button">＋ Weight</button>
+              <button id="autoSkinWeights" type="button">縦方向へ自動配分</button>
+            </span>
+          </div>
+          <div id="skinWeights" class="repeat-list compact-list"></div>
+          <button id="applySkin" class="wide primary">Skinning設定を反映</button>
+        </div>
+      </section>
+
+      <section class="inspector-section tool-section">
+        <div class="panel-title compact">
+          <div>
+            <span>TEXTURE ATLAS</span>
+            <strong>テクスチャ統合</strong>
+          </div>
+          <span id="atlasState" class="status waiting">SOURCE</span>
+        </div>
+        <div class="tool-inspector">
+          <div class="field-grid">
+            <label class="field">
+              <span>Size</span>
+              <select id="atlasSize">
+                <option value="auto">Auto</option>
+                <option value="1024">1024</option>
+                <option value="2048">2048</option>
+                <option value="4096">4096</option>
+                <option value="8192">8192</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Padding</span>
+              <input id="atlasPadding" type="number" min="0" max="32" step="1" value="4">
+            </label>
+          </div>
+          <div class="button-row atlas-actions">
+            <button id="buildAtlas" class="primary">生成 / 再生成</button>
+            <button id="restoreTextures">元Textureへ戻す</button>
+          </div>
+          <p id="atlasReport" class="hint inline-hint">Atlas未生成</p>
+        </div>
+      </section>
     </aside>
   </main>
 
   <input id="psdInput" type="file" accept=".psd" hidden>
+  <input id="psdReimportInput" type="file" accept=".psd" hidden>
   <input id="jsonInput" type="file" accept=".json,application/json" hidden>
 
   <script src="../vendor/anime25d/lib/ag-psd.min.js"></script>

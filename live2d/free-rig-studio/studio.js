@@ -21,6 +21,8 @@
   var physicsEnabled = true;
   var physicsRuntime = null;
   var selectedPhysicsId = null;
+  var selectedGlueId = null;
+  var selectedSkinId = null;
   var lastFrame = performance.now();
   var frameCount = 0;
   var fpsStarted = lastFrame;
@@ -303,7 +305,11 @@
               kind: 'psd-group',
               path: currentPath,
               domainParentId: domainParentId,
-              blendMode: sourceGroup.blendMode || 'normal'
+              blendMode: sourceGroup.blendMode || 'normal',
+              baseTransform: {
+                x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1,
+                opacity: Core.clamp(sourceOpacity, 0, 1), drawOrder: 0
+              }
             },
             transform: {
               x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1,
@@ -350,7 +356,17 @@
           kind: 'psd-layer',
           sourceId: layer.sourceId || null,
           path: layer.sourcePath || [{ name: layer.name, occurrence: 1 }],
-          groupPath: layer.sourceGroupPath || []
+          groupPath: layer.sourceGroupPath || [],
+          size: { width: layer.w, height: layer.h },
+          baseTransform: {
+            x: layer.x,
+            y: layer.y,
+            rotation: 0,
+            scaleX: 1,
+            scaleY: 1,
+            opacity: 1,
+            drawOrder: layerIndex * 10
+          }
         },
         transform: {
           x: layer.x,
@@ -398,11 +414,69 @@
       if (mask) node.maskIds = [mask.id];
     });
 
+    var hairPart = nodes.filter(function (node) {
+      return node.type === 'part' && /hair|髪/i.test(node.name);
+    }).sort(function (left, right) {
+      var leftSize = left.source && left.source.size || {};
+      var rightSize = right.source && right.source.size || {};
+      return Number(rightSize.height || 0) - Number(leftSize.height || 0);
+    })[0];
+    var sampleSkins = [];
+    if (hairPart) {
+      var hairSize = hairPart.source.size;
+      var bones = [
+        {
+          id: 'hair_root',
+          name: 'Hair root',
+          parentId: null,
+          pivotX: hairSize.width * 0.5,
+          pivotY: hairSize.height * 0.18,
+          parameterId: 'HairSwing',
+          angleScale: 5,
+          angleOffset: 0
+        },
+        {
+          id: 'hair_mid',
+          name: 'Hair mid',
+          parentId: 'hair_root',
+          pivotX: hairSize.width * 0.5,
+          pivotY: hairSize.height * 0.48,
+          parameterId: 'HairSwing',
+          angleScale: 8,
+          angleOffset: 0
+        },
+        {
+          id: 'hair_tip',
+          name: 'Hair tip',
+          parentId: 'hair_mid',
+          pivotX: hairSize.width * 0.5,
+          pivotY: hairSize.height * 0.76,
+          parameterId: 'HairSwing',
+          angleScale: 11,
+          angleOffset: 0
+        }
+      ];
+      var weights = hairPart.mesh.vertices.map(function (vertex) {
+        var normalizedY = hairSize.height ? vertex[1] / hairSize.height : 0;
+        if (normalizedY < 0.22) return [];
+        if (normalizedY < 0.5) return [{ boneId: 'hair_root', weight: 1 }];
+        if (normalizedY < 0.76) return [{ boneId: 'hair_mid', weight: 1 }];
+        return [{ boneId: 'hair_tip', weight: 1 }];
+      });
+      sampleSkins.push({
+        id: 'skin_hair',
+        name: 'Hair chain',
+        partId: hairPart.id,
+        bones: bones,
+        weights: weights
+      });
+    }
+
     return {
       version: Core.VERSION,
       meta: {
         name: sourceName || 'ABC Succubus sample',
-        generator: 'Free Rig Studio core P1',
+        generator: 'Free Rig Studio core P2',
         source: 'PSD semantic layers',
         sourceHierarchy: {
           groups: sourceHierarchy ? sourceHierarchy.groups.length : 0,
@@ -419,18 +493,39 @@
         { id: 'EyeOpenR', name: 'Right eye open', min: 0, max: 1, default: 1 },
         { id: 'MouthOpen', name: 'Mouth open', min: 0, max: 1, default: 0 },
         { id: 'Breath', name: 'Breath', min: 0, max: 1, default: 0 },
-        { id: 'Bust', name: 'Bust spring', min: -1, max: 1, default: 0 }
+        { id: 'Bust', name: 'Bust spring', min: -1, max: 1, default: 0 },
+        { id: 'HairSwing', name: 'Hair swing', min: -1, max: 1, default: 0 }
       ],
       textures: textures,
       nodes: nodes,
-      physics: [{
-        id: 'physics_bust',
-        name: 'Bust follow-through',
-        enabled: true,
-        inputs: [{ parameterId: 'Breath', center: 0, weight: 1 }],
-        outputs: [{ parameterId: 'Bust', scale: 0.55, offset: 0 }],
-        settings: { stiffness: 24, damping: 4.2, mass: 1 }
-      }]
+      physics: [
+        {
+          id: 'physics_bust',
+          name: 'Bust follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'Breath', center: 0, weight: 1 },
+            { parameterId: 'BodyAngle', center: 0, weight: 0.25 }
+          ],
+          outputs: [{ parameterId: 'Bust', scale: 0.55, offset: 0 }],
+          settings: { stiffness: 24, damping: 4.2, mass: 1 }
+        },
+        {
+          id: 'physics_hair',
+          name: 'Hair follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'AngleZ', center: 0, weight: 0.75 },
+            { parameterId: 'BodyAngle', center: 0, weight: 0.35 }
+          ],
+          outputs: [{ parameterId: 'HairSwing', scale: 0.8, offset: 0 }],
+          settings: { stiffness: 16, damping: 3.6, mass: 1.1 }
+        }
+      ],
+      glues: [],
+      skins: sampleSkins,
+      textureAtlases: [],
+      atlasSettings: null
     };
   }
 
@@ -624,6 +719,16 @@
         groups: (model.physics || []).length,
         states: physicsRuntime ? physicsRuntime.getStates() : {}
       },
+      glues: (model.glues || []).length,
+      skins: (model.skins || []).length,
+      atlases: (model.textureAtlases || []).map(function (atlas) {
+        return {
+          id: atlas.id,
+          width: atlas.width,
+          height: atlas.height,
+          entries: atlas.entries.length
+        };
+      }),
       validation: Core.validateModel(model)
     };
   }
@@ -636,6 +741,9 @@
     renderValidation();
     updateStats();
     renderPhysicsInspector();
+    renderGlueInspector();
+    renderSkinInspector();
+    renderAtlasInspector();
   }
 
   async function setModel(nextModel) {
@@ -656,17 +764,23 @@
     evaluator = Core.createEvaluator(model);
     physicsRuntime = Core.createPhysicsRuntime(model);
     selectedPhysicsId = model.physics && model.physics.length ? model.physics[0].id : null;
+    selectedGlueId = model.glues && model.glues.length ? model.glues[0].id : null;
+    selectedSkinId = model.skins && model.skins.length ? model.skins[0].id : null;
     renderParameters();
     renderOutliner();
     selectNode(selectedId);
     renderPhysicsInspector();
+    renderGlueInspector();
+    renderSkinInspector();
+    renderAtlasInspector();
     renderValidation();
     updateStats();
     evaluateAndRender();
     setStatus('モデル読込完了');
   }
 
-  async function loadPsdBuffer(buffer, name) {
+  async function loadPsdBuffer(buffer, name, options) {
+    options = options || {};
     if (!window.agPsd || !window.Rigger) throw new Error('PSD parser is unavailable');
     setStatus('PSDをPartsへ変換中…');
     var psd = window.agPsd.readPsd(new Uint8Array(buffer), {
@@ -678,7 +792,25 @@
     window.Rigger.cleanPsdLayers(flattenedPsd);
     var rig = window.Rigger.buildRig(flattenedPsd, {});
     var nextModel = createSampleModel(rig, name || 'Imported PSD', sourceHierarchy);
+    if (options.merge && model) {
+      var merged = Core.mergeReimportedModel(model, nextModel);
+      var previousAtlasSettings = merged.model.atlasSettings;
+      await setModel(merged.model);
+      if (previousAtlasSettings) {
+        await buildTextureAtlas(previousAtlasSettings);
+      }
+      var report = merged.report;
+      setStatus(
+        '再import: 一致 ' + report.matched +
+        ' / 新規 ' + report.newNodes +
+        ' / 削除 ' + report.removed +
+        (report.atlasInvalidated ? ' / Atlas再生成' : '')
+      );
+      window.__freeRigDebug.reimport = report;
+      return report;
+    }
     await setModel(nextModel);
+    return null;
   }
 
   async function loadSample() {
@@ -686,7 +818,7 @@
       setStatus('ABCサンプルPSDを取得中…');
       var response = await fetch('../assets/abc_succubus_rig_v4.psd');
       if (!response.ok) throw new Error('sample PSD HTTP ' + response.status);
-      await loadPsdBuffer(await response.arrayBuffer(), 'ABC Succubus / Free Rig P1');
+      await loadPsdBuffer(await response.arrayBuffer(), 'ABC Succubus / Free Rig P2');
     } catch (error) {
       setStatus('読込失敗: ' + error.message);
       throw error;
@@ -861,6 +993,70 @@
     });
   }
 
+  function createMiniField(labelText, control) {
+    var label = document.createElement('label');
+    var caption = document.createElement('span');
+    caption.textContent = labelText;
+    label.append(caption, control);
+    return label;
+  }
+
+  function numberInput(value, step, className) {
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.step = step || '0.01';
+    input.value = value;
+    if (className) input.className = className;
+    return input;
+  }
+
+  function removeRowButton(container, minimum, message) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'row-remove';
+    button.textContent = '×';
+    button.addEventListener('click', function () {
+      if (container.children.length <= minimum) {
+        setStatus(message);
+        return;
+      }
+      button.parentNode.remove();
+    });
+    return button;
+  }
+
+  function appendPhysicsInputRow(value) {
+    var container = document.getElementById('physicsInputs');
+    var row = document.createElement('div');
+    row.className = 'repeat-row physics-input-row';
+    var parameter = document.createElement('select');
+    parameter.className = 'io-parameter';
+    fillParameterSelect(parameter, value.parameterId);
+    row.append(
+      createMiniField('Parameter', parameter),
+      createMiniField('Center', numberInput(value.center == null ? 0 : value.center, '0.01', 'io-center')),
+      createMiniField('Weight', numberInput(value.weight == null ? 1 : value.weight, '0.01', 'io-weight')),
+      removeRowButton(container, 1, 'Physics inputは1つ以上必要です')
+    );
+    container.appendChild(row);
+  }
+
+  function appendPhysicsOutputRow(value) {
+    var container = document.getElementById('physicsOutputs');
+    var row = document.createElement('div');
+    row.className = 'repeat-row physics-output-row';
+    var parameter = document.createElement('select');
+    parameter.className = 'io-parameter';
+    fillParameterSelect(parameter, value.parameterId);
+    row.append(
+      createMiniField('Parameter', parameter),
+      createMiniField('Scale', numberInput(value.scale == null ? 1 : value.scale, '0.01', 'io-scale')),
+      createMiniField('Offset', numberInput(value.offset == null ? 0 : value.offset, '0.01', 'io-offset')),
+      removeRowButton(container, 1, 'Physics outputは1つ以上必要です')
+    );
+    container.appendChild(row);
+  }
+
   function renderPhysicsInspector() {
     var select = document.getElementById('physicsGroup');
     var empty = document.getElementById('physicsEmpty');
@@ -889,16 +1085,12 @@
     inspector.hidden = !group;
     if (!group) return;
 
-    var input = group.inputs[0];
-    var output = group.outputs[0];
     var settings = group.settings || {};
     document.getElementById('physicsName').value = group.name;
-    fillParameterSelect(document.getElementById('physicsInput'), input.parameterId);
-    fillParameterSelect(document.getElementById('physicsOutput'), output.parameterId);
-    document.getElementById('physicsCenter').value = input.center == null ? 0 : input.center;
-    document.getElementById('physicsWeight').value = input.weight == null ? 1 : input.weight;
-    document.getElementById('physicsScale').value = output.scale == null ? 1 : output.scale;
-    document.getElementById('physicsOffset').value = output.offset == null ? 0 : output.offset;
+    document.getElementById('physicsInputs').innerHTML = '';
+    document.getElementById('physicsOutputs').innerHTML = '';
+    group.inputs.forEach(appendPhysicsInputRow);
+    group.outputs.forEach(appendPhysicsOutputRow);
     document.getElementById('physicsStiffness').value = settings.stiffness;
     document.getElementById('physicsDamping').value = settings.damping;
     document.getElementById('physicsMass').value = settings.mass == null ? 1 : settings.mass;
@@ -950,16 +1142,20 @@
     var applied = safeMutation(function () {
       group.name = document.getElementById('physicsName').value.trim() || group.id;
       group.enabled = document.getElementById('physicsEnabled').checked;
-      group.inputs = [{
-        parameterId: document.getElementById('physicsInput').value,
-        center: Number(document.getElementById('physicsCenter').value),
-        weight: Number(document.getElementById('physicsWeight').value)
-      }];
-      group.outputs = [{
-        parameterId: document.getElementById('physicsOutput').value,
-        scale: Number(document.getElementById('physicsScale').value),
-        offset: Number(document.getElementById('physicsOffset').value)
-      }];
+      group.inputs = Array.from(document.querySelectorAll('.physics-input-row')).map(function (row) {
+        return {
+          parameterId: row.querySelector('.io-parameter').value,
+          center: Number(row.querySelector('.io-center').value),
+          weight: Number(row.querySelector('.io-weight').value)
+        };
+      });
+      group.outputs = Array.from(document.querySelectorAll('.physics-output-row')).map(function (row) {
+        return {
+          parameterId: row.querySelector('.io-parameter').value,
+          scale: Number(row.querySelector('.io-scale').value),
+          offset: Number(row.querySelector('.io-offset').value)
+        };
+      });
       group.settings = {
         stiffness: Number(document.getElementById('physicsStiffness').value),
         damping: Number(document.getElementById('physicsDamping').value),
@@ -967,6 +1163,589 @@
       };
     });
     setStatus(applied ? 'Physics設定を反映' : 'Physics設定を反映できませんでした');
+  }
+
+  function partNodes() {
+    return model ? model.nodes.filter(function (node) { return node.type === 'part'; }) : [];
+  }
+
+  function fillPartSelect(select, selectedPartId, excludedPartId) {
+    select.innerHTML = '';
+    partNodes().forEach(function (part) {
+      if (part.id === excludedPartId) return;
+      var option = document.createElement('option');
+      option.value = part.id;
+      option.textContent = part.name;
+      option.selected = part.id === selectedPartId;
+      select.appendChild(option);
+    });
+  }
+
+  function selectedGlue() {
+    return model && (model.glues || []).find(function (glue) {
+      return glue.id === selectedGlueId;
+    });
+  }
+
+  function appendGlueBindingRow(bindingValue) {
+    var container = document.getElementById('glueBindings');
+    var row = document.createElement('div');
+    row.className = 'repeat-row glue-binding-row';
+    row.append(
+      createMiniField('Vertex A', numberInput(bindingValue.vertexA, '1', 'glue-vertex-a')),
+      createMiniField('Vertex B', numberInput(bindingValue.vertexB, '1', 'glue-vertex-b')),
+      createMiniField('Weight', numberInput(
+        bindingValue.weight == null ? 0.5 : bindingValue.weight,
+        '0.05',
+        'glue-weight'
+      )),
+      removeRowButton(container, 1, 'Glueには1つ以上のvertex pairが必要です')
+    );
+    container.appendChild(row);
+  }
+
+  function renderGlueInspector() {
+    var select = document.getElementById('glueGroup');
+    var empty = document.getElementById('glueEmpty');
+    var inspector = document.getElementById('glueInspector');
+    if (!model) return;
+    model.glues = model.glues || [];
+    if (!selectedGlue()) selectedGlueId = model.glues.length ? model.glues[0].id : null;
+    select.innerHTML = '';
+    model.glues.forEach(function (glue) {
+      var option = document.createElement('option');
+      option.value = glue.id;
+      option.textContent = glue.name;
+      option.selected = glue.id === selectedGlueId;
+      select.appendChild(option);
+    });
+    document.getElementById('glueCount').textContent = model.glues.length;
+    var glue = selectedGlue();
+    empty.hidden = Boolean(glue);
+    inspector.hidden = !glue;
+    if (!glue) return;
+    document.getElementById('glueName').value = glue.name;
+    fillPartSelect(document.getElementById('gluePartA'), glue.partAId, null);
+    fillPartSelect(document.getElementById('gluePartB'), glue.partBId, glue.partAId);
+    document.getElementById('glueCompatibility').value =
+      glue.compatibility == null ? 1 : glue.compatibility;
+    var bindings = document.getElementById('glueBindings');
+    bindings.innerHTML = '';
+    glue.bindings.forEach(appendGlueBindingRow);
+  }
+
+  function addGlue() {
+    var parts = partNodes();
+    if (parts.length < 2) {
+      setStatus('Glueには2つ以上のPartが必要です');
+      return;
+    }
+    var used = {};
+    (model.glues || []).forEach(function (glue) { used[glue.id] = true; });
+    var id = uniqueId('glue_group', used);
+    model.glues = model.glues || [];
+    model.glues.push({
+      id: id,
+      name: 'Glue ' + (model.glues.length + 1),
+      partAId: parts[0].id,
+      partBId: parts[1].id,
+      compatibility: 1,
+      bindings: [{ vertexA: 0, vertexB: 0, weight: 0.5 }]
+    });
+    selectedGlueId = id;
+    rebuildEvaluator();
+    setStatus('Glueを追加');
+  }
+
+  function deleteGlue() {
+    if (!selectedGlue()) return;
+    model.glues = model.glues.filter(function (glue) { return glue.id !== selectedGlueId; });
+    selectedGlueId = model.glues.length ? model.glues[0].id : null;
+    rebuildEvaluator();
+    setStatus('Glueを削除');
+  }
+
+  function applyGlue() {
+    var glue = selectedGlue();
+    if (!glue) return;
+    var applied = safeMutation(function () {
+      glue.name = document.getElementById('glueName').value.trim() || glue.id;
+      glue.partAId = document.getElementById('gluePartA').value;
+      glue.partBId = document.getElementById('gluePartB').value;
+      glue.compatibility = Number(document.getElementById('glueCompatibility').value);
+      glue.bindings = Array.from(document.querySelectorAll('.glue-binding-row')).map(function (row) {
+        return {
+          vertexA: Number(row.querySelector('.glue-vertex-a').value),
+          vertexB: Number(row.querySelector('.glue-vertex-b').value),
+          weight: Number(row.querySelector('.glue-weight').value)
+        };
+      });
+    });
+    setStatus(applied ? 'Glue設定を反映' : 'Glue設定を反映できませんでした');
+  }
+
+  function selectedSkin() {
+    return model && (model.skins || []).find(function (skin) {
+      return skin.id === selectedSkinId;
+    });
+  }
+
+  function fillBoneSelect(select, bones, selectedBoneId, allowNone, excludedBoneId) {
+    select.innerHTML = allowNone ? '<option value="">— none —</option>' : '';
+    bones.forEach(function (bone) {
+      if (bone.id === excludedBoneId) return;
+      var option = document.createElement('option');
+      option.value = bone.id;
+      option.textContent = bone.name || bone.id;
+      option.selected = bone.id === selectedBoneId;
+      select.appendChild(option);
+    });
+  }
+
+  function appendBoneRow(bone, bones) {
+    var container = document.getElementById('skinBones');
+    var row = document.createElement('div');
+    row.className = 'repeat-row bone-row';
+    row.dataset.boneId = bone.id;
+    var name = document.createElement('input');
+    name.className = 'bone-name';
+    name.value = bone.name || bone.id;
+    var parent = document.createElement('select');
+    parent.className = 'bone-parent';
+    fillBoneSelect(parent, bones, bone.parentId, true, bone.id);
+    var parameter = document.createElement('select');
+    parameter.className = 'bone-parameter';
+    parameter.innerHTML = '<option value="">— none —</option>';
+    model.parameters.forEach(function (entry) {
+      var option = document.createElement('option');
+      option.value = entry.id;
+      option.textContent = entry.name;
+      option.selected = entry.id === bone.parameterId;
+      parameter.appendChild(option);
+    });
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'row-remove';
+    remove.textContent = 'Bone削除';
+    remove.addEventListener('click', function () {
+      if (container.children.length <= 1) {
+        setStatus('Skinningには1つ以上のBoneが必要です');
+        return;
+      }
+      row.remove();
+      document.querySelectorAll('.skin-weight-row').forEach(function (weightRow) {
+        if (weightRow.querySelector('.weight-bone').value === bone.id) weightRow.remove();
+      });
+    });
+    row.append(
+      createMiniField('Name · ' + bone.id, name),
+      createMiniField('Parent', parent),
+      createMiniField('Input Parameter', parameter),
+      createMiniField('Pivot X', numberInput(bone.pivotX || 0, '1', 'bone-pivot-x')),
+      createMiniField('Pivot Y', numberInput(bone.pivotY || 0, '1', 'bone-pivot-y')),
+      createMiniField('Angle scale °', numberInput(
+        bone.angleScale == null ? 10 : bone.angleScale,
+        '0.1',
+        'bone-angle-scale'
+      )),
+      createMiniField('Bind angle °', numberInput(
+        bone.angleOffset == null ? 0 : bone.angleOffset,
+        '0.1',
+        'bone-angle-offset'
+      )),
+      remove
+    );
+    container.appendChild(row);
+  }
+
+  function appendSkinWeightRow(vertexIndex, weightValue, bones) {
+    var container = document.getElementById('skinWeights');
+    var row = document.createElement('div');
+    row.className = 'repeat-row skin-weight-row';
+    var vertex = numberInput(vertexIndex, '1', 'weight-vertex');
+    var bone = document.createElement('select');
+    bone.className = 'weight-bone';
+    fillBoneSelect(bone, bones, weightValue.boneId, false, null);
+    var weight = numberInput(weightValue.weight == null ? 1 : weightValue.weight, '0.05', 'weight-value');
+    row.append(
+      createMiniField('Vertex', vertex),
+      createMiniField('Bone', bone),
+      createMiniField('Weight', weight),
+      removeRowButton(container, 0, '')
+    );
+    container.appendChild(row);
+  }
+
+  function renderSkinInspector() {
+    var select = document.getElementById('skinGroup');
+    var empty = document.getElementById('skinEmpty');
+    var inspector = document.getElementById('skinInspector');
+    if (!model) return;
+    model.skins = model.skins || [];
+    if (!selectedSkin()) selectedSkinId = model.skins.length ? model.skins[0].id : null;
+    select.innerHTML = '';
+    model.skins.forEach(function (skin) {
+      var option = document.createElement('option');
+      option.value = skin.id;
+      option.textContent = skin.name;
+      option.selected = skin.id === selectedSkinId;
+      select.appendChild(option);
+    });
+    document.getElementById('skinCount').textContent = model.skins.length;
+    var skin = selectedSkin();
+    empty.hidden = Boolean(skin);
+    inspector.hidden = !skin;
+    if (!skin) return;
+    document.getElementById('skinName').value = skin.name;
+    fillPartSelect(document.getElementById('skinPart'), skin.partId, null);
+    var boneContainer = document.getElementById('skinBones');
+    boneContainer.innerHTML = '';
+    skin.bones.forEach(function (bone) { appendBoneRow(bone, skin.bones); });
+    var weightContainer = document.getElementById('skinWeights');
+    weightContainer.innerHTML = '';
+    (skin.weights || []).forEach(function (weights, vertexIndex) {
+      (weights || []).forEach(function (weightValue) {
+        appendSkinWeightRow(vertexIndex, weightValue, skin.bones);
+      });
+    });
+  }
+
+  function defaultSkinForPart(part, id, index) {
+    var bounds = part.mesh.vertices.reduce(function (result, vertex) {
+      result.minX = Math.min(result.minX, vertex[0]);
+      result.maxX = Math.max(result.maxX, vertex[0]);
+      result.minY = Math.min(result.minY, vertex[1]);
+      result.maxY = Math.max(result.maxY, vertex[1]);
+      return result;
+    }, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+    var bone = {
+      id: 'bone_root',
+      name: 'Root bone',
+      parentId: null,
+      pivotX: (bounds.minX + bounds.maxX) / 2,
+      pivotY: bounds.minY + (bounds.maxY - bounds.minY) * 0.25,
+      parameterId: model.parameters.some(function (entry) { return entry.id === 'HairSwing'; })
+        ? 'HairSwing' : model.parameters[0].id,
+      angleScale: 12,
+      angleOffset: 0
+    };
+    return {
+      id: id,
+      name: 'Skin ' + index,
+      partId: part.id,
+      bones: [bone],
+      weights: part.mesh.vertices.map(function (vertex) {
+        var t = (vertex[1] - bounds.minY) / Math.max(1, bounds.maxY - bounds.minY);
+        return t < 0.2 ? [] : [{ boneId: bone.id, weight: Core.clamp((t - 0.2) / 0.35, 0, 1) }];
+      })
+    };
+  }
+
+  function addSkin() {
+    var parts = partNodes();
+    if (!parts.length) {
+      setStatus('SkinningにはPartが必要です');
+      return;
+    }
+    var used = {};
+    (model.skins || []).forEach(function (skin) { used[skin.id] = true; });
+    var id = uniqueId('skin_group', used);
+    model.skins = model.skins || [];
+    model.skins.push(defaultSkinForPart(parts[0], id, model.skins.length + 1));
+    selectedSkinId = id;
+    rebuildEvaluator();
+    setStatus('Skinningを追加');
+  }
+
+  function deleteSkin() {
+    if (!selectedSkin()) return;
+    model.skins = model.skins.filter(function (skin) { return skin.id !== selectedSkinId; });
+    selectedSkinId = model.skins.length ? model.skins[0].id : null;
+    rebuildEvaluator();
+    setStatus('Skinningを削除');
+  }
+
+  function currentBoneDrafts() {
+    return Array.from(document.querySelectorAll('.bone-row')).map(function (row) {
+      return {
+        id: row.dataset.boneId,
+        name: row.querySelector('.bone-name').value.trim() || row.dataset.boneId,
+        parentId: row.querySelector('.bone-parent').value || null,
+        parameterId: row.querySelector('.bone-parameter').value || null,
+        pivotX: Number(row.querySelector('.bone-pivot-x').value),
+        pivotY: Number(row.querySelector('.bone-pivot-y').value),
+        angleScale: Number(row.querySelector('.bone-angle-scale').value),
+        angleOffset: Number(row.querySelector('.bone-angle-offset').value)
+      };
+    });
+  }
+
+  function addBoneDraft() {
+    var skin = selectedSkin();
+    if (!skin) return;
+    var bones = currentBoneDrafts();
+    var used = {};
+    bones.forEach(function (bone) { used[bone.id] = true; });
+    var id = uniqueId('bone', used);
+    var parent = bones.length ? bones[bones.length - 1] : null;
+    var bone = {
+      id: id,
+      name: 'Bone ' + (bones.length + 1),
+      parentId: parent ? parent.id : null,
+      pivotX: parent ? parent.pivotX : 0,
+      pivotY: parent ? parent.pivotY + 60 : 0,
+      parameterId: model.parameters.some(function (entry) { return entry.id === 'HairSwing'; })
+        ? 'HairSwing' : model.parameters[0].id,
+      angleScale: 10,
+      angleOffset: 0
+    };
+    appendBoneRow(bone, bones.concat([bone]));
+  }
+
+  function addSkinWeightDraft() {
+    var bones = currentBoneDrafts();
+    if (!bones.length) return;
+    appendSkinWeightRow(0, { boneId: bones[0].id, weight: 1 }, bones);
+  }
+
+  function autoSkinWeights() {
+    var skin = selectedSkin();
+    if (!skin) return;
+    var partId = document.getElementById('skinPart').value;
+    var part = nodeById(partId);
+    var bones = currentBoneDrafts().sort(function (left, right) {
+      return left.pivotY - right.pivotY;
+    });
+    if (!part || !bones.length) return;
+    var minY = Math.min.apply(null, part.mesh.vertices.map(function (vertex) { return vertex[1]; }));
+    var maxY = Math.max.apply(null, part.mesh.vertices.map(function (vertex) { return vertex[1]; }));
+    var container = document.getElementById('skinWeights');
+    container.innerHTML = '';
+    part.mesh.vertices.forEach(function (vertex, vertexIndex) {
+      var normalized = (vertex[1] - minY) / Math.max(1, maxY - minY);
+      if (normalized < 0.12) return;
+      var targetIndex = Math.min(bones.length - 1, Math.floor(normalized * bones.length));
+      appendSkinWeightRow(vertexIndex, {
+        boneId: bones[targetIndex].id,
+        weight: Core.clamp((normalized - 0.08) / 0.25, 0, 1)
+      }, bones);
+    });
+    setStatus('縦方向のBone weightを自動配分');
+  }
+
+  function applySkin() {
+    var skin = selectedSkin();
+    if (!skin) return;
+    var applied = safeMutation(function () {
+      skin.name = document.getElementById('skinName').value.trim() || skin.id;
+      skin.partId = document.getElementById('skinPart').value;
+      skin.bones = currentBoneDrafts();
+      var part = nodeById(skin.partId);
+      var bonesById = {};
+      skin.bones.forEach(function (bone) { bonesById[bone.id] = true; });
+      skin.weights = part.mesh.vertices.map(function () { return []; });
+      document.querySelectorAll('.skin-weight-row').forEach(function (row) {
+        var vertexIndex = Number(row.querySelector('.weight-vertex').value);
+        var boneId = row.querySelector('.weight-bone').value;
+        var weight = Number(row.querySelector('.weight-value').value);
+        if (skin.weights[vertexIndex] && bonesById[boneId]) {
+          skin.weights[vertexIndex].push({ boneId: boneId, weight: weight });
+        }
+      });
+    });
+    setStatus(applied ? 'Skinning設定を反映' : 'Skinning設定を反映できませんでした');
+  }
+
+  function loadImage(src) {
+    return new Promise(function (resolve, reject) {
+      var image = new Image();
+      image.onload = function () { resolve(image); };
+      image.onerror = function () { reject(new Error('image load failed')); };
+      image.src = src;
+    });
+  }
+
+  function atlasSourceTextureIds() {
+    var ids = {};
+    partNodes().forEach(function (part) {
+      ids[part.sourceTextureId || part.textureId] = true;
+    });
+    return Object.keys(ids);
+  }
+
+  async function restoreSourceTextures(options) {
+    options = options || {};
+    if (!model || !(model.textureAtlases || []).length) return false;
+    var atlasTextureIds = {};
+    model.textureAtlases.forEach(function (atlas) { atlasTextureIds[atlas.textureId] = true; });
+    partNodes().forEach(function (part) {
+      if (part.sourceTextureId) part.textureId = part.sourceTextureId;
+      if (part.mesh.sourceUvs) part.mesh.uvs = part.mesh.sourceUvs;
+      delete part.sourceTextureId;
+      delete part.mesh.sourceUvs;
+    });
+    model.textures = model.textures.filter(function (texture) {
+      return !atlasTextureIds[texture.id];
+    });
+    model.textureAtlases = [];
+    model.atlasSettings = null;
+    await renderer.setModel(model);
+    evaluator = Core.createEvaluator(model);
+    evaluateAndRender();
+    renderAtlasInspector();
+    renderValidation();
+    updateStats();
+    if (!options.silent) setStatus('元Textureへ復元');
+    return true;
+  }
+
+  function verifyAtlasEntries(entries, width, height) {
+    var overlaps = 0;
+    var outOfBounds = 0;
+    entries.forEach(function (entry, index) {
+      if (entry.x < 0 || entry.y < 0 ||
+          entry.x + entry.width > width || entry.y + entry.height > height) {
+        outOfBounds++;
+      }
+      entries.slice(index + 1).forEach(function (other) {
+        if (entry.x < other.x + other.width && entry.x + entry.width > other.x &&
+            entry.y < other.y + other.height && entry.y + entry.height > other.y) {
+          overlaps++;
+        }
+      });
+    });
+    return { overlaps: overlaps, outOfBounds: outOfBounds };
+  }
+
+  async function buildTextureAtlas(settingsOverride) {
+    if (!model) return;
+    var settings = settingsOverride || {
+      size: document.getElementById('atlasSize').value,
+      padding: Number(document.getElementById('atlasPadding').value)
+    };
+    if ((model.textureAtlases || []).length) await restoreSourceTextures({ silent: true });
+    var sourceIds = atlasSourceTextureIds();
+    var texturesById = {};
+    model.textures.forEach(function (texture) { texturesById[texture.id] = texture; });
+    var sourceTextures = sourceIds.map(function (id) { return texturesById[id]; }).filter(Boolean);
+    var size = settings.size && settings.size !== 'auto' ? Number(settings.size) : 0;
+    var packed = Core.packTextureRects(sourceTextures, {
+      width: size,
+      height: size,
+      padding: Number(settings.padding)
+    });
+    if (!packed.ok) {
+      setStatus('Atlas生成失敗: ' + packed.errors.join(', '));
+      return;
+    }
+    setStatus('Atlas画像を生成中…');
+    var canvas = document.createElement('canvas');
+    canvas.width = packed.width;
+    canvas.height = packed.height;
+    var context = canvas.getContext('2d');
+    var images = {};
+    await Promise.all(sourceTextures.map(async function (texture) {
+      images[texture.id] = await loadImage(texture.src);
+    }));
+    packed.entries.forEach(function (entry) {
+      context.drawImage(
+        images[entry.textureId],
+        entry.x,
+        entry.y,
+        entry.width,
+        entry.height
+      );
+    });
+    var atlasId = 'atlas_' + Date.now().toString(36);
+    var atlasTextureId = 'tex_' + atlasId;
+    model.textures.push({
+      id: atlasTextureId,
+      name: 'Texture Atlas',
+      width: packed.width,
+      height: packed.height,
+      src: canvas.toDataURL('image/png')
+    });
+    var entriesById = {};
+    packed.entries.forEach(function (entry) { entriesById[entry.textureId] = entry; });
+    partNodes().forEach(function (part) {
+      var sourceTextureId = part.textureId;
+      var entry = entriesById[sourceTextureId];
+      if (!entry) return;
+      part.sourceTextureId = sourceTextureId;
+      part.mesh.sourceUvs = part.mesh.uvs.map(function (uv) { return uv.slice(); });
+      part.mesh.uvs = part.mesh.uvs.map(function (uv) {
+        return [
+          (entry.x + uv[0] * entry.width) / packed.width,
+          (entry.y + uv[1] * entry.height) / packed.height
+        ];
+      });
+      part.textureId = atlasTextureId;
+    });
+    var publicEntries = packed.entries.map(function (entry) {
+      return {
+        sourceTextureId: entry.textureId,
+        x: entry.x,
+        y: entry.y,
+        width: entry.width,
+        height: entry.height
+      };
+    });
+    model.textureAtlases = [{
+      id: atlasId,
+      textureId: atlasTextureId,
+      width: packed.width,
+      height: packed.height,
+      padding: packed.padding,
+      entries: publicEntries
+    }];
+    model.atlasSettings = {
+      size: settings.size || 'auto',
+      padding: Number(settings.padding)
+    };
+    var verification = verifyAtlasEntries(publicEntries, packed.width, packed.height);
+    var validation = Core.validateModel(model);
+    if (!validation.ok || verification.overlaps || verification.outOfBounds) {
+      throw new Error(validation.errors.concat([
+        'overlaps ' + verification.overlaps,
+        'out-of-bounds ' + verification.outOfBounds
+      ]).join('\n'));
+    }
+    await renderer.setModel(model);
+    evaluator = Core.createEvaluator(model);
+    evaluateAndRender();
+    renderAtlasInspector();
+    renderValidation();
+    updateStats();
+    setStatus(
+      'Atlas ' + packed.width + '×' + packed.height +
+      ' / ' + publicEntries.length + ' textures / overlap 0'
+    );
+  }
+
+  function renderAtlasInspector() {
+    if (!model) return;
+    var atlas = model.textureAtlases && model.textureAtlases[0];
+    var state = document.getElementById('atlasState');
+    var report = document.getElementById('atlasReport');
+    if (!atlas) {
+      state.textContent = 'SOURCE';
+      state.className = 'status waiting';
+      report.textContent = 'Atlas未生成';
+      return;
+    }
+    var verification = verifyAtlasEntries(atlas.entries, atlas.width, atlas.height);
+    state.textContent = verification.overlaps || verification.outOfBounds ? 'FAIL' : 'PASS';
+    state.className = 'status ' +
+      (verification.overlaps || verification.outOfBounds ? 'fail' : 'pass');
+    report.textContent =
+      atlas.width + '×' + atlas.height +
+      ' / ' + atlas.entries.length + ' textures' +
+      ' / overlap ' + verification.overlaps +
+      ' / out-of-bounds ' + verification.outOfBounds;
+    if (model.atlasSettings) {
+      document.getElementById('atlasSize').value = model.atlasSettings.size || 'auto';
+      document.getElementById('atlasPadding').value = model.atlasSettings.padding;
+    }
   }
 
   function safeMutation(callback) {
@@ -981,6 +1760,9 @@
       renderOutliner();
       renderInspector();
       renderPhysicsInspector();
+      renderGlueInspector();
+      renderSkinInspector();
+      renderAtlasInspector();
       renderValidation();
       updateStats();
       evaluateAndRender();
@@ -1131,6 +1913,9 @@
         ' / rig group node: ' +
         model.nodes.filter(function (node) { return node.type === 'group'; }).length,
       'Physics group: ' + (model.physics || []).length,
+      'Glue: ' + (model.glues || []).length +
+        ' / Skinning: ' + (model.skins || []).length,
+      'Texture atlas: ' + (model.textureAtlases || []).length,
       '保存可能なschema v' + model.version
     ];
     lines.slice(0, 12).forEach(function (line) {
@@ -1149,6 +1934,9 @@
       'parts ' + parts + ' / groups ' + groups +
       ' / params ' + model.parameters.length +
       ' / physics ' + (model.physics || []).length +
+      ' / glue ' + (model.glues || []).length +
+      ' / skin ' + (model.skins || []).length +
+      ' / atlas ' + (model.textureAtlases || []).length +
       ' / errors ' + validation.errors.length;
   }
 
@@ -1287,6 +2075,61 @@
           ? 'rgba(88,208,201,1)' : 'rgba(209,164,91,.95)';
         overlay.fill();
       }
+      overlay.restore();
+    }
+
+    var glue = selectedGlue();
+    if (glue) {
+      var gluePartA = evaluated.parts.find(function (entry) { return entry.id === glue.partAId; });
+      var gluePartB = evaluated.parts.find(function (entry) { return entry.id === glue.partBId; });
+      if (gluePartA && gluePartB) {
+        overlay.save();
+        overlay.strokeStyle = 'rgba(220,102,118,.9)';
+        overlay.fillStyle = 'rgba(220,102,118,.95)';
+        overlay.lineWidth = Math.max(1.5, model.canvas.width / 700);
+        glue.bindings.forEach(function (entry) {
+          var pointA = gluePartA.positions[entry.vertexA];
+          var pointB = gluePartB.positions[entry.vertexB];
+          if (!pointA || !pointB) return;
+          overlay.beginPath();
+          overlay.moveTo(pointA[0], pointA[1]);
+          overlay.lineTo(pointB[0], pointB[1]);
+          overlay.stroke();
+          [pointA, pointB].forEach(function (point) {
+            overlay.beginPath();
+            overlay.arc(point[0], point[1], 4, 0, Math.PI * 2);
+            overlay.fill();
+          });
+        });
+        overlay.restore();
+      }
+    }
+
+    var skin = selectedSkin();
+    if (skin && skin.partId === node.id) {
+      overlay.save();
+      overlay.strokeStyle = 'rgba(118,151,255,.9)';
+      overlay.fillStyle = 'rgba(118,151,255,.95)';
+      overlay.lineWidth = Math.max(1.5, model.canvas.width / 700);
+      var bonePoints = {};
+      skin.bones.forEach(function (bone) {
+        bonePoints[bone.id] = projectNodePoint(node, {
+          x: Number(bone.pivotX || 0),
+          y: Number(bone.pivotY || 0)
+        });
+      });
+      skin.bones.forEach(function (bone) {
+        var point = bonePoints[bone.id];
+        if (bone.parentId && bonePoints[bone.parentId]) {
+          overlay.beginPath();
+          overlay.moveTo(bonePoints[bone.parentId].x, bonePoints[bone.parentId].y);
+          overlay.lineTo(point.x, point.y);
+          overlay.stroke();
+        }
+        overlay.beginPath();
+        overlay.arc(point.x, point.y, 5, 0, Math.PI * 2);
+        overlay.fill();
+      });
       overlay.restore();
     }
   }
@@ -1556,6 +2399,13 @@
   document.getElementById('openPsd').addEventListener('click', function () {
     document.getElementById('psdInput').click();
   });
+  document.getElementById('reimportPsd').addEventListener('click', function () {
+    if (!model) {
+      setStatus('再importする前にモデルを読み込んでください');
+      return;
+    }
+    document.getElementById('psdReimportInput').click();
+  });
   document.getElementById('openJson').addEventListener('click', function () {
     document.getElementById('jsonInput').click();
   });
@@ -1593,6 +2443,17 @@
     if (file) await loadPsdBuffer(await file.arrayBuffer(), file.name);
     event.target.value = '';
   });
+  document.getElementById('psdReimportInput').addEventListener('change', async function (event) {
+    var file = event.target.files[0];
+    try {
+      if (file) await loadPsdBuffer(await file.arrayBuffer(), file.name, { merge: true });
+    } catch (error) {
+      setStatus('再import失敗: ' + error.message);
+      throw error;
+    } finally {
+      event.target.value = '';
+    }
+  });
   document.getElementById('jsonInput').addEventListener('change', async function (event) {
     var file = event.target.files[0];
     if (file) await loadJsonFile(file);
@@ -1610,7 +2471,60 @@
   });
   document.getElementById('addPhysics').addEventListener('click', addPhysicsGroup);
   document.getElementById('deletePhysics').addEventListener('click', deletePhysicsGroup);
+  document.getElementById('addPhysicsInput').addEventListener('click', function () {
+    appendPhysicsInputRow({
+      parameterId: model.parameters[0].id,
+      center: model.parameters[0].default,
+      weight: 1
+    });
+  });
+  document.getElementById('addPhysicsOutput').addEventListener('click', function () {
+    var inputs = Array.from(document.querySelectorAll('.physics-input-row .io-parameter'))
+      .map(function (select) { return select.value; });
+    var parameter = model.parameters.find(function (entry) {
+      return inputs.indexOf(entry.id) < 0;
+    }) || model.parameters[0];
+    appendPhysicsOutputRow({ parameterId: parameter.id, scale: 1, offset: 0 });
+  });
   document.getElementById('applyPhysics').addEventListener('click', applyPhysicsInspector);
+  document.getElementById('glueGroup').addEventListener('change', function () {
+    selectedGlueId = this.value;
+    renderGlueInspector();
+    drawOverlay();
+  });
+  document.getElementById('addGlue').addEventListener('click', addGlue);
+  document.getElementById('deleteGlue').addEventListener('click', deleteGlue);
+  document.getElementById('addGlueBinding').addEventListener('click', function () {
+    appendGlueBindingRow({ vertexA: 0, vertexB: 0, weight: 0.5 });
+  });
+  document.getElementById('gluePartA').addEventListener('change', function () {
+    var currentPartB = document.getElementById('gluePartB').value;
+    fillPartSelect(document.getElementById('gluePartB'), currentPartB, this.value);
+  });
+  document.getElementById('applyGlue').addEventListener('click', applyGlue);
+  document.getElementById('skinGroup').addEventListener('change', function () {
+    selectedSkinId = this.value;
+    renderSkinInspector();
+    drawOverlay();
+  });
+  document.getElementById('addSkin').addEventListener('click', addSkin);
+  document.getElementById('deleteSkin').addEventListener('click', deleteSkin);
+  document.getElementById('addBone').addEventListener('click', addBoneDraft);
+  document.getElementById('addSkinWeight').addEventListener('click', addSkinWeightDraft);
+  document.getElementById('autoSkinWeights').addEventListener('click', autoSkinWeights);
+  document.getElementById('applySkin').addEventListener('click', applySkin);
+  document.getElementById('buildAtlas').addEventListener('click', function () {
+    buildTextureAtlas().catch(function (error) {
+      setStatus('Atlas生成失敗: ' + error.message);
+      throw error;
+    });
+  });
+  document.getElementById('restoreTextures').addEventListener('click', function () {
+    restoreSourceTextures().catch(function (error) {
+      setStatus('Texture復元失敗: ' + error.message);
+      throw error;
+    });
+  });
 
   try {
     renderer = new RigRenderer(renderCanvas);
@@ -1624,7 +2538,10 @@
   window.__freeRigStudio = {
     loadSample: loadSample,
     loadPsdBuffer: loadPsdBuffer,
+    mergeReimportedModel: Core.mergeReimportedModel,
     inspectPsdHierarchy: inspectPsdHierarchy,
+    buildTextureAtlas: buildTextureAtlas,
+    restoreSourceTextures: restoreSourceTextures,
     setParameter: function (id, value) {
       parameterValues[id] = value;
       evaluateAndRender();
@@ -1634,6 +2551,7 @@
       if (!physicsEnabled && physicsRuntime) physicsRuntime.reset();
     },
     selectNode: selectNode,
+    evaluate: function (values) { return evaluator ? evaluator.evaluate(values || parameterValues) : null; },
     exportModel: function () { return model ? Core.exportModel(model) : null; },
     getModel: function () { return model; }
   };
