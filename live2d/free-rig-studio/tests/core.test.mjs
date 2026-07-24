@@ -11,6 +11,7 @@ function fixture() {
     version: Core.VERSION,
     meta: { name: 'core fixture' },
     canvas: { width: 100, height: 100 },
+    physicsFps: 60,
     parameters: [
       { id: 'Turn', name: 'Turn', min: -1, max: 1, default: 0 },
       { id: 'Open', name: 'Open', min: 0, max: 1, default: 1 }
@@ -241,6 +242,49 @@ test('merges a PSD reimport by stable ids while preserving authored rig data', (
   assert.equal(Core.validateModel(model).ok, true);
 });
 
+test('redistributes preserved skin weights when a reimport changes mesh density', () => {
+  const current = fixture();
+  const imported = fixture();
+  const currentFace = current.nodes.find((node) => node.id === 'face');
+  const importedFace = imported.nodes.find((node) => node.id === 'face');
+  currentFace.source = {
+    kind: 'psd-layer',
+    size: { width: 20, height: 20 },
+    baseTransform: currentFace.transform
+  };
+  importedFace.source = {
+    kind: 'psd-layer',
+    size: { width: 20, height: 20 },
+    baseTransform: importedFace.transform
+  };
+  importedFace.mesh = Core.createRectMesh(20, 20, 2, 3);
+  current.skins = [{
+    id: 'skin',
+    name: 'Skin',
+    partId: 'face',
+    bones: [
+      { id: 'root_bone', pivotX: 10, pivotY: 5, parameterId: 'Turn', angleScale: 5 },
+      {
+        id: 'tip_bone',
+        parentId: 'root_bone',
+        pivotX: 10,
+        pivotY: 15,
+        parameterId: 'Turn',
+        angleScale: 10
+      }
+    ],
+    weights: currentFace.mesh.vertices.map(() => [{ boneId: 'root_bone', weight: 1 }])
+  }];
+  const merged = Core.mergeReimportedModel(current, imported);
+  assert.equal(merged.report.remappedSkins, 1);
+  assert.equal(
+    merged.model.skins[0].weights.length,
+    importedFace.mesh.vertices.length
+  );
+  assert.ok(merged.model.skins[0].weights.some((weights) => weights.length === 2));
+  assert.equal(Core.validateModel(merged.model).ok, true);
+});
+
 test('combines multiple physics inputs and emits multiple outputs', () => {
   const model = fixture();
   model.parameters.push(
@@ -267,6 +311,29 @@ test('combines multiple physics inputs and emits multiple outputs', () => {
   assert.ok(output.Swing > 0);
   assert.ok(output.Bounce < 0.1);
   assert.equal(Object.keys(output).length, 2);
+});
+
+test('evaluates physics at a fixed 60 Hz independent of render frame rate', () => {
+  const outputs = [25, 30, 60, 120].map((fps) => {
+    const model = fixture();
+    model.physicsFps = 60;
+    model.parameters.push({ id: 'Swing', name: 'Swing', min: -2, max: 2, default: 0 });
+    model.physics = [{
+      id: 'fixed',
+      inputs: [{ parameterId: 'Turn', center: 0, weight: 1 }],
+      outputs: [{ parameterId: 'Swing', scale: 1, offset: 0 }],
+      settings: { stiffness: 20, damping: 4, mass: 1 }
+    }];
+    const runtime = Core.createPhysicsRuntime(model);
+    let output;
+    for (let index = 0; index < fps * 2; index++) {
+      output = runtime.step({ Turn: 1 }, 1 / fps);
+    }
+    assert.equal(runtime.getDiagnostics().totalSteps, 120);
+    assert.equal(runtime.getDiagnostics().fixedFps, 60);
+    return output.Swing;
+  });
+  assert.ok(Math.max(...outputs) - Math.min(...outputs) < 1e-12);
 });
 
 test('glues two evaluated mesh vertices with compatibility and directional weight', () => {
@@ -316,6 +383,42 @@ test('skins a mesh vertex through a parameter-driven rotation bone', () => {
   assert.deepEqual(neutral.positions[2], [10, 40]);
   assert.ok(Math.abs(turned.positions[2][0] + 10) < 1e-9);
   assert.ok(Math.abs(turned.positions[2][1] - 20) < 1e-9);
+});
+
+test('generates continuous two-bone blends along a skinning chain', () => {
+  const vertices = [[0, 0], [0, 25], [0, 35], [0, 50], [0, 65], [0, 100]];
+  const bones = [
+    { id: 'root', pivotY: 20 },
+    { id: 'mid', pivotY: 50 },
+    { id: 'tip', pivotY: 80 }
+  ];
+  const weights = Core.generateSmoothChainWeights(vertices, bones, { fadeStartY: 5 });
+  assert.deepEqual(weights[0], []);
+  assert.equal(weights[2].length, 2);
+  assert.equal(weights[2][0].boneId, 'root');
+  assert.equal(weights[2][1].boneId, 'mid');
+  assert.ok(Math.abs(weights[2].reduce((sum, entry) => sum + entry.weight, 0) - 1) < 1e-12);
+  assert.equal(weights[5][0].boneId, 'tip');
+});
+
+test('idle motion produces smooth bounded automatic blinks and phased motion', () => {
+  const runtime = Core.createIdleMotionRuntime(0xabc2d);
+  let minimumEye = 1;
+  let maximumEyeDelta = 0;
+  let previousEye = 1;
+  let sample;
+  for (let index = 0; index < 600; index++) {
+    sample = runtime.step(1 / 60, 1);
+    minimumEye = Math.min(minimumEye, sample.EyeOpenL, sample.EyeOpenR);
+    maximumEyeDelta = Math.max(maximumEyeDelta, Math.abs(sample.EyeOpenL - previousEye));
+    previousEye = sample.EyeOpenL;
+    assert.ok(sample.EyeOpenL >= 0 && sample.EyeOpenL <= 1);
+    assert.ok(sample.EyeOpenR >= 0 && sample.EyeOpenR <= 1);
+  }
+  assert.ok(runtime.getDiagnostics().blinkCount >= 1);
+  assert.ok(minimumEye < 0.02);
+  assert.ok(maximumEyeDelta < 0.4);
+  assert.notEqual(sample.AngleX, sample.AngleZ);
 });
 
 test('packs a deterministic non-overlapping texture atlas within bounds', () => {

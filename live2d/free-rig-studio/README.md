@@ -24,11 +24,15 @@ Live2Dの独自ファイルを解析・互換実装するものではない。
 - Warp control pointの直接編集とParameter別Keyform保存
 - 任意Parameter間を接続するspring Physics group
 - Physics groupの複数Input / Output編集UI
+- 描画fpsから独立した固定60Hz Physicsとsubstep診断
+- 位相差を持つIdle、自然瞬き、ON/OFFのfade
+- `prefers-reduced-motion`時の動作振幅抑制
 - 安定node IDによるPSD再import merge
 - PSD画像・階層更新時のKeyform / Warp / Mesh / Physics / Glue / Skin保持
 - 頂点pair・directional weight・compatibilityを持つGlue
 - 階層Bone・parameter angle・vertex weightを持つSkinning
-- 縦方向のSkin weight自動配分
+- 高密度Hair meshと隣接Bone間の連続weight配分
+- Mesh密度変更を伴う再import時のSkin weight再配分
 - 可逆なTexture Atlas生成・再生成・source texture復元
 - Atlasの重複・範囲外検証と再import後の自動再生成
 - 全Parameter極値での有限頂点監査
@@ -65,6 +69,7 @@ node --test live2d/free-rig-studio/tests/core.test.mjs
 - 複数Parameterの2D格子補間
 - Glue compatibilityのParameter別Keyform
 - Skinning用Mesh自動分割とGlue自動生成
+- 元PSDで分離されていない翼・尻尾・衣装の独立物理
 - 複数Texture Atlasと手動配置・回転
 - ArtPath
 - Undo stack

@@ -18,6 +18,9 @@
   var warpEditing = false;
   var draggedWarpPoint = -1;
   var idleEnabled = false;
+  var idleRuntime = Core.createIdleMotionRuntime(0xabc2d);
+  var idleBlend = 0;
+  var reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   var physicsEnabled = true;
   var physicsRuntime = null;
   var selectedPhysicsId = null;
@@ -26,6 +29,8 @@
   var lastFrame = performance.now();
   var frameCount = 0;
   var fpsStarted = lastFrame;
+  var frameDeltas = [];
+  var lastMotionDiagnosticsUpdate = lastFrame;
 
   function setStatus(message) {
     document.getElementById('statusText').textContent = message;
@@ -341,6 +346,10 @@
       });
       var meshColumns = Math.max(2, Math.min(5, Math.round(layer.w / 76)));
       var meshRows = Math.max(2, Math.min(6, Math.round(layer.h / 76)));
+      if (/hair|髪/i.test(layer.name)) {
+        meshColumns = Math.max(meshColumns, 3);
+        meshRows = Math.max(meshRows, 8);
+      }
       var parentId = layer.group === 'head' ? 'head_warp' : 'body_warp';
       if (/^topwear/.test(base)) parentId = 'bust_warp';
       parentId = ensureSourceGroupChain(layer.sourceGroupPath || [], parentId);
@@ -430,38 +439,44 @@
           name: 'Hair root',
           parentId: null,
           pivotX: hairSize.width * 0.5,
-          pivotY: hairSize.height * 0.18,
+          pivotY: hairSize.height * 0.16,
+          parameterId: 'HairSwing',
+          angleScale: 3,
+          angleOffset: 0
+        },
+        {
+          id: 'hair_upper',
+          name: 'Hair upper',
+          parentId: 'hair_root',
+          pivotX: hairSize.width * 0.5,
+          pivotY: hairSize.height * 0.38,
           parameterId: 'HairSwing',
           angleScale: 5,
           angleOffset: 0
         },
         {
-          id: 'hair_mid',
-          name: 'Hair mid',
-          parentId: 'hair_root',
+          id: 'hair_lower',
+          name: 'Hair lower',
+          parentId: 'hair_upper',
           pivotX: hairSize.width * 0.5,
-          pivotY: hairSize.height * 0.48,
+          pivotY: hairSize.height * 0.64,
           parameterId: 'HairSwing',
-          angleScale: 8,
+          angleScale: 7,
           angleOffset: 0
         },
         {
           id: 'hair_tip',
           name: 'Hair tip',
-          parentId: 'hair_mid',
+          parentId: 'hair_lower',
           pivotX: hairSize.width * 0.5,
-          pivotY: hairSize.height * 0.76,
+          pivotY: hairSize.height * 0.86,
           parameterId: 'HairSwing',
-          angleScale: 11,
+          angleScale: 9,
           angleOffset: 0
         }
       ];
-      var weights = hairPart.mesh.vertices.map(function (vertex) {
-        var normalizedY = hairSize.height ? vertex[1] / hairSize.height : 0;
-        if (normalizedY < 0.22) return [];
-        if (normalizedY < 0.5) return [{ boneId: 'hair_root', weight: 1 }];
-        if (normalizedY < 0.76) return [{ boneId: 'hair_mid', weight: 1 }];
-        return [{ boneId: 'hair_tip', weight: 1 }];
+      var weights = Core.generateSmoothChainWeights(hairPart.mesh.vertices, bones, {
+        fadeStartY: hairSize.height * 0.06
       });
       sampleSkins.push({
         id: 'skin_hair',
@@ -484,6 +499,7 @@
         }
       },
       canvas: { width: rig.canvas.w, height: rig.canvas.h },
+      physicsFps: 60,
       parameters: [
         { id: 'AngleX', name: 'Angle X', min: -1, max: 1, default: 0 },
         { id: 'AngleY', name: 'Angle Y', min: -1, max: 1, default: 0 },
@@ -518,7 +534,7 @@
             { parameterId: 'AngleZ', center: 0, weight: 0.75 },
             { parameterId: 'BodyAngle', center: 0, weight: 0.35 }
           ],
-          outputs: [{ parameterId: 'HairSwing', scale: 0.8, offset: 0 }],
+          outputs: [{ parameterId: 'HairSwing', scale: 1.25, offset: 0 }],
           settings: { stiffness: 16, damping: 3.6, mass: 1.1 }
         }
       ],
@@ -717,7 +733,15 @@
       physics: {
         enabled: physicsEnabled,
         groups: (model.physics || []).length,
-        states: physicsRuntime ? physicsRuntime.getStates() : {}
+        states: physicsRuntime ? physicsRuntime.getStates() : {},
+        diagnostics: physicsRuntime ? physicsRuntime.getDiagnostics() : null
+      },
+      motion: {
+        idleEnabled: idleEnabled,
+        idleBlend: idleBlend,
+        reducedMotion: reducedMotionQuery.matches,
+        idle: idleRuntime.getDiagnostics(),
+        frameDeltaMs: frameDeltas.length ? frameDeltas[frameDeltas.length - 1] : 0
       },
       glues: (model.glues || []).length,
       skins: (model.skins || []).length,
@@ -750,6 +774,8 @@
     var validation = Core.validateModel(nextModel);
     if (!validation.ok) throw new Error(validation.errors.join('\n'));
     model = nextModel;
+    idleRuntime.reset();
+    idleBlend = 0;
     parameterValues = defaultParameters();
     selectedId = model.nodes.length ? model.nodes[0].id : null;
     renderCanvas.width = overlayCanvas.width = model.canvas.width;
@@ -804,6 +830,7 @@
         '再import: 一致 ' + report.matched +
         ' / 新規 ' + report.newNodes +
         ' / 削除 ' + report.removed +
+        (report.remappedSkins ? ' / Skin再配分 ' + report.remappedSkins : '') +
         (report.atlasInvalidated ? ' / Atlas再生成' : '')
       );
       window.__freeRigDebug.reimport = report;
@@ -1513,24 +1540,21 @@
     if (!skin) return;
     var partId = document.getElementById('skinPart').value;
     var part = nodeById(partId);
-    var bones = currentBoneDrafts().sort(function (left, right) {
-      return left.pivotY - right.pivotY;
-    });
+    var bones = currentBoneDrafts();
     if (!part || !bones.length) return;
     var minY = Math.min.apply(null, part.mesh.vertices.map(function (vertex) { return vertex[1]; }));
     var maxY = Math.max.apply(null, part.mesh.vertices.map(function (vertex) { return vertex[1]; }));
+    var weights = Core.generateSmoothChainWeights(part.mesh.vertices, bones, {
+      fadeStartY: minY + (maxY - minY) * 0.06
+    });
     var container = document.getElementById('skinWeights');
     container.innerHTML = '';
-    part.mesh.vertices.forEach(function (vertex, vertexIndex) {
-      var normalized = (vertex[1] - minY) / Math.max(1, maxY - minY);
-      if (normalized < 0.12) return;
-      var targetIndex = Math.min(bones.length - 1, Math.floor(normalized * bones.length));
-      appendSkinWeightRow(vertexIndex, {
-        boneId: bones[targetIndex].id,
-        weight: Core.clamp((normalized - 0.08) / 0.25, 0, 1)
-      }, bones);
+    weights.forEach(function (vertexWeights, vertexIndex) {
+      vertexWeights.forEach(function (weightValue) {
+        appendSkinWeightRow(vertexIndex, weightValue, bones);
+      });
     });
-    setStatus('縦方向のBone weightを自動配分');
+    setStatus('縦方向のBone weightを連続補間');
   }
 
   function applySkin() {
@@ -2355,6 +2379,38 @@
     await setModel(nextModel);
   }
 
+  function applyIdleValue(parameterId, value, blend) {
+    var parameter = model.parameters.find(function (entry) { return entry.id === parameterId; });
+    if (!parameter) return;
+    parameterValues[parameterId] = Core.lerp(parameter.default, value, blend);
+  }
+
+  function updateMotionDiagnostics(now) {
+    if (now - lastMotionDiagnosticsUpdate < 500 || !model) return;
+    lastMotionDiagnosticsUpdate = now;
+    var mean = frameDeltas.length
+      ? frameDeltas.reduce(function (sum, value) { return sum + value; }, 0) / frameDeltas.length
+      : 0;
+    var variance = frameDeltas.length
+      ? frameDeltas.reduce(function (sum, value) {
+        return sum + Math.pow(value - mean, 2);
+      }, 0) / frameDeltas.length
+      : 0;
+    var jitter = Math.sqrt(variance);
+    var idleDiagnostics = idleRuntime.getDiagnostics();
+    var physicsDiagnostics = physicsRuntime ? physicsRuntime.getDiagnostics() : null;
+    document.getElementById('motionQuality').textContent =
+      'motion ' + (physicsDiagnostics ? physicsDiagnostics.fixedFps : 0) + 'Hz' +
+      ' · jitter ' + jitter.toFixed(1) + 'ms' +
+      ' · blink ' + idleDiagnostics.blinkCount;
+    if (window.__freeRigDebug && window.__freeRigDebug.motion) {
+      window.__freeRigDebug.motion.frameMeanMs = mean;
+      window.__freeRigDebug.motion.frameJitterMs = jitter;
+      window.__freeRigDebug.motion.frameMaxMs = frameDeltas.length
+        ? Math.max.apply(null, frameDeltas) : 0;
+    }
+  }
+
   function animate(now) {
     requestAnimationFrame(animate);
     frameCount++;
@@ -2364,17 +2420,22 @@
       frameCount = 0;
       fpsStarted = now;
     }
-    var dt = Math.min(0.05, (now - lastFrame) / 1000);
+    var rawDelta = Math.max(0, (now - lastFrame) / 1000);
+    var dt = Math.min(0.1, rawDelta);
     lastFrame = now;
+    frameDeltas.push(rawDelta * 1000);
+    if (frameDeltas.length > 120) frameDeltas.shift();
     if (!model) return;
     var changed = false;
-    if (idleEnabled) {
-      var time = now / 1000;
-      parameterValues.AngleX = Math.sin(time * 0.52) * 0.22;
-      parameterValues.AngleY = Math.sin(time * 0.37 + 0.8) * 0.12;
-      parameterValues.AngleZ = Math.sin(time * 0.31 + 1.4) * 0.18;
-      parameterValues.BodyAngle = Math.sin(time * 0.24) * 0.2;
-      parameterValues.Breath = 0.5 + Math.sin(time * Math.PI * 2 / 3.6) * 0.5;
+    var previousIdleBlend = idleBlend;
+    if (idleEnabled) idleBlend = Math.min(1, idleBlend + dt / 0.72);
+    else idleBlend = Math.max(0, idleBlend - dt / 0.46);
+    if (idleEnabled || idleBlend > 0 || previousIdleBlend > 0) {
+      var motionScale = reducedMotionQuery.matches ? 0.35 : 1;
+      var idleValues = idleRuntime.step(dt, motionScale);
+      Object.keys(idleValues).forEach(function (parameterId) {
+        applyIdleValue(parameterId, idleValues[parameterId], idleBlend);
+      });
       changed = true;
     }
     if (physicsEnabled && physicsRuntime) {
@@ -2392,6 +2453,7 @@
       input.parentNode.querySelector('output').value = Number(input.value).toFixed(2);
     });
     evaluateAndRender();
+    updateMotionDiagnostics(now);
   }
 
   document.getElementById('loadSample').addEventListener('click', loadSample);
@@ -2415,13 +2477,24 @@
     physicsEnabled = !physicsEnabled;
     this.setAttribute('aria-pressed', physicsEnabled ? 'true' : 'false');
     this.textContent = physicsEnabled ? 'Physics ON' : 'Physics OFF';
-    if (!physicsEnabled) resetParameters();
+    if (!physicsEnabled && physicsRuntime) {
+      physicsRuntime.reset();
+      (model.physics || []).forEach(function (group) {
+        group.outputs.forEach(function (output) {
+          var parameter = model.parameters.find(function (entry) {
+            return entry.id === output.parameterId;
+          });
+          if (parameter) parameterValues[parameter.id] = parameter.default;
+        });
+      });
+      evaluateAndRender();
+    }
   });
   document.getElementById('toggleIdle').addEventListener('click', function () {
     idleEnabled = !idleEnabled;
     this.setAttribute('aria-pressed', idleEnabled ? 'true' : 'false');
     this.textContent = idleEnabled ? 'Idle ON' : 'Idle OFF';
-    if (!idleEnabled) resetParameters();
+    if (idleEnabled && idleBlend <= 0.00001) idleRuntime.reset();
   });
   document.getElementById('toggleMesh').addEventListener('click', function () {
     showMesh = !showMesh;

@@ -424,6 +424,27 @@
       }
     });
 
+    var mergedById = {};
+    mergedNodes.forEach(function (node) { mergedById[node.id] = node; });
+    var remappedSkins = 0;
+    var preservedSkins = deepClone(current.skins || []);
+    preservedSkins.forEach(function (skin) {
+      var oldPart = currentById[skin.partId];
+      var nextPart = mergedById[skin.partId];
+      if (!oldPart || !nextPart || oldPart.type !== 'part' || nextPart.type !== 'part') return;
+      if (oldPart.mesh.vertices.length === nextPart.mesh.vertices.length) return;
+      var minY = Math.min.apply(null, nextPart.mesh.vertices.map(function (vertex) {
+        return vertex[1];
+      }));
+      var maxY = Math.max.apply(null, nextPart.mesh.vertices.map(function (vertex) {
+        return vertex[1];
+      }));
+      skin.weights = generateSmoothChainWeights(nextPart.mesh.vertices, skin.bones, {
+        fadeStartY: minY + (maxY - minY) * 0.06
+      });
+      remappedSkins++;
+    });
+
     var nextModel = {
       version: VERSION,
       meta: Object.assign({}, imported.meta || {}, {
@@ -434,9 +455,10 @@
       parameters: parameters,
       textures: deepClone(imported.textures),
       nodes: mergedNodes,
+      physicsFps: Number(current.physicsFps || imported.physicsFps || 60),
       physics: deepClone(current.physics || imported.physics || []),
       glues: deepClone(current.glues || []),
-      skins: deepClone(current.skins || []),
+      skins: preservedSkins,
       textureAtlases: [],
       atlasSettings: deepClone(current.atlasSettings || null)
     };
@@ -454,6 +476,7 @@
         preservedRigNodes: mergedNodes.filter(function (node) {
           return !(node.source && node.source.kind);
         }).length,
+        remappedSkins: remappedSkins,
         atlasInvalidated: Boolean((current.textureAtlases || []).length)
       }
     };
@@ -548,12 +571,159 @@
     };
   }
 
+  function generateSmoothChainWeights(vertices, bones, options) {
+    options = options || {};
+    var sortedBones = (bones || []).slice().sort(function (left, right) {
+      return Number(left.pivotY || 0) - Number(right.pivotY || 0);
+    });
+    if (!sortedBones.length) return (vertices || []).map(function () { return []; });
+    var minY = Math.min.apply(null, (vertices || []).map(function (vertex) {
+      return Number(vertex[1]);
+    }));
+    var firstPivot = Number(sortedBones[0].pivotY || minY);
+    var fadeStart = options.fadeStartY == null
+      ? lerp(minY, firstPivot, 0.35) : Number(options.fadeStartY);
+    var fadeEnd = Math.max(fadeStart + 0.00001, firstPivot);
+
+    return (vertices || []).map(function (vertex) {
+      var y = Number(vertex[1]);
+      var activation = smoothstep((y - fadeStart) / (fadeEnd - fadeStart));
+      if (activation <= 0.00001) return [];
+      if (y <= firstPivot || sortedBones.length === 1) {
+        return [{ boneId: sortedBones[0].id, weight: activation }];
+      }
+      for (var index = 0; index < sortedBones.length - 1; index++) {
+        var left = sortedBones[index];
+        var right = sortedBones[index + 1];
+        var leftY = Number(left.pivotY);
+        var rightY = Number(right.pivotY);
+        if (y > rightY) continue;
+        var t = smoothstep((y - leftY) / Math.max(0.00001, rightY - leftY));
+        var leftWeight = activation * (1 - t);
+        var rightWeight = activation * t;
+        var weights = [];
+        if (leftWeight > 0.00001) weights.push({ boneId: left.id, weight: leftWeight });
+        if (rightWeight > 0.00001) weights.push({ boneId: right.id, weight: rightWeight });
+        return weights;
+      }
+      return [{ boneId: sortedBones[sortedBones.length - 1].id, weight: activation }];
+    });
+  }
+
+  function createIdleMotionRuntime(seed) {
+    var initialSeed = (Number(seed) || 0x5eed1234) >>> 0;
+    var randomState = initialSeed;
+    var time = 0;
+    var nextBlink = 0;
+    var blinkStarts = [];
+    var blinkCount = 0;
+    var lastEyeOpen = 1;
+
+    function random() {
+      randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+      return randomState / 4294967296;
+    }
+
+    function scheduleFirstBlink() {
+      nextBlink = 2.15 + random() * 1.1;
+    }
+
+    function blinkValue(localTime) {
+      var closeDuration = 0.072;
+      var closedDuration = 0.03;
+      var openDuration = 0.118;
+      if (localTime < 0 || localTime >= closeDuration + closedDuration + openDuration) return 1;
+      if (localTime < closeDuration) return 1 - smoothstep(localTime / closeDuration);
+      if (localTime < closeDuration + closedDuration) return 0;
+      return smoothstep(
+        (localTime - closeDuration - closedDuration) / openDuration
+      );
+    }
+
+    function eyeOpenAt(currentTime, offset) {
+      var value = 1;
+      blinkStarts.forEach(function (start) {
+        value = Math.min(value, blinkValue(currentTime - start - offset));
+      });
+      return value;
+    }
+
+    function reset() {
+      randomState = initialSeed;
+      time = 0;
+      blinkStarts = [];
+      blinkCount = 0;
+      lastEyeOpen = 1;
+      scheduleFirstBlink();
+    }
+
+    function step(deltaTime, motionScale) {
+      var dt = clamp(Number(deltaTime) || 0, 0, 0.1);
+      var scale = motionScale == null ? 1 : clamp(Number(motionScale), 0, 1);
+      time += dt;
+      while (time >= nextBlink) {
+        blinkStarts.push(nextBlink);
+        blinkCount++;
+        if (random() < 0.18) {
+          blinkStarts.push(nextBlink + 0.235);
+          blinkCount++;
+        }
+        nextBlink += 2.75 + random() * 2.35;
+      }
+      blinkStarts = blinkStarts.filter(function (start) {
+        return start > time - 0.45;
+      });
+      var eyeOpenL = eyeOpenAt(time, 0);
+      var eyeOpenR = eyeOpenAt(time, 0.006);
+      lastEyeOpen = Math.min(eyeOpenL, eyeOpenR);
+      return {
+        AngleX: (
+          Math.sin(time * 0.52) * 0.17 +
+          Math.sin(time * 0.19 + 1.1) * 0.035
+        ) * scale,
+        AngleY: (
+          Math.sin(time * 0.37 + 0.82) * 0.075 +
+          Math.sin(time * 0.13) * 0.02
+        ) * scale,
+        AngleZ: (
+          Math.sin(time * 0.31 + 1.36) * 0.12 +
+          Math.sin(time * 0.11 + 0.2) * 0.025
+        ) * scale,
+        BodyAngle: (
+          Math.sin(time * 0.235 - 0.4) * 0.135 +
+          Math.sin(time * 0.08 + 1.7) * 0.025
+        ) * scale,
+        Breath: (0.5 - Math.cos(time * Math.PI * 2 / 3.8) * 0.5) * scale,
+        EyeOpenL: eyeOpenL,
+        EyeOpenR: eyeOpenR
+      };
+    }
+
+    reset();
+    return {
+      step: step,
+      reset: reset,
+      getDiagnostics: function () {
+        return {
+          time: time,
+          blinkCount: blinkCount,
+          nextBlink: nextBlink,
+          eyeOpen: lastEyeOpen
+        };
+      }
+    };
+  }
+
   function validateModel(model) {
     var errors = [];
     if (!model || typeof model !== 'object') return { ok: false, errors: ['model is required'] };
     if (model.version !== VERSION) errors.push('unsupported model version: ' + model.version);
     if (!model.canvas || !(model.canvas.width > 0) || !(model.canvas.height > 0)) {
       errors.push('canvas width and height must be positive');
+    }
+    if (model.physicsFps != null &&
+        !(Number(model.physicsFps) >= 15 && Number(model.physicsFps) <= 240)) {
+      errors.push('physics fps must be between 15 and 240');
     }
 
     var parametersById = {};
@@ -998,42 +1168,81 @@
     if (!validation.ok) throw new Error(validation.errors.join('\n'));
     var parametersById = {};
     var states = {};
+    var fixedFps = clamp(Number(model.physicsFps || 60), 15, 240);
+    var fixedDelta = 1 / fixedFps;
+    var accumulator = 0;
+    var maxSubsteps = 8;
+    var lastSubsteps = 0;
+    var totalSteps = 0;
+    var droppedTime = 0;
     model.parameters.forEach(function (parameter) {
       parametersById[parameter.id] = parameter;
     });
     (model.physics || []).forEach(function (group) {
-      states[group.id] = { value: 0, velocity: 0 };
+      states[group.id] = { value: 0, velocity: 0, previousValue: 0 };
     });
 
     function reset() {
+      accumulator = 0;
+      lastSubsteps = 0;
+      totalSteps = 0;
+      droppedTime = 0;
       Object.keys(states).forEach(function (id) {
         states[id].value = 0;
         states[id].velocity = 0;
+        states[id].previousValue = 0;
       });
     }
 
-    function step(values, deltaTime) {
-      var dt = clamp(Number(deltaTime) || 0, 0, 0.05);
-      var contributions = {};
+    function inputTarget(group, values) {
+      var target = 0;
+      group.inputs.forEach(function (input) {
+        var parameter = parametersById[input.parameterId];
+        var value = values[input.parameterId] == null
+          ? parameter.default : Number(values[input.parameterId]);
+        var center = input.center == null ? parameter.default : Number(input.center);
+        var weight = input.weight == null ? 1 : Number(input.weight);
+        target += (value - center) * weight;
+      });
+      return target;
+    }
+
+    function integrate(values) {
       (model.physics || []).forEach(function (group) {
         if (group.enabled === false) return;
         var settings = group.settings || {};
         var stiffness = Number(settings.stiffness);
         var damping = Number(settings.damping);
         var mass = settings.mass == null ? 1 : Number(settings.mass);
-        var target = 0;
-        group.inputs.forEach(function (input) {
-          var parameter = parametersById[input.parameterId];
-          var value = values[input.parameterId] == null
-            ? parameter.default : Number(values[input.parameterId]);
-          var center = input.center == null ? parameter.default : Number(input.center);
-          var weight = input.weight == null ? 1 : Number(input.weight);
-          target += (value - center) * weight;
-        });
         var state = states[group.id];
+        var target = inputTarget(group, values);
+        state.previousValue = state.value;
         var acceleration = (stiffness * (target - state.value) - damping * state.velocity) / mass;
-        state.velocity += acceleration * dt;
-        state.value += state.velocity * dt;
+        state.velocity += acceleration * fixedDelta;
+        state.value += state.velocity * fixedDelta;
+      });
+      totalSteps++;
+    }
+
+    function step(values, deltaTime) {
+      var rawDelta = Math.max(0, Number(deltaTime) || 0);
+      var acceptedDelta = Math.min(rawDelta, fixedDelta * maxSubsteps);
+      droppedTime += Math.max(0, rawDelta - acceptedDelta);
+      accumulator += acceptedDelta;
+      lastSubsteps = 0;
+      while (accumulator + 1e-12 >= fixedDelta && lastSubsteps < maxSubsteps) {
+        integrate(values);
+        accumulator -= fixedDelta;
+        lastSubsteps++;
+      }
+      if (accumulator < 1e-12) accumulator = 0;
+
+      var alpha = clamp(accumulator / fixedDelta, 0, 1);
+      var contributions = {};
+      (model.physics || []).forEach(function (group) {
+        if (group.enabled === false) return;
+        var state = states[group.id];
+        var sampledValue = lerp(state.previousValue, state.value, alpha);
         group.outputs.forEach(function (output) {
           var parameter = parametersById[output.parameterId];
           var scale = output.scale == null ? 1 : Number(output.scale);
@@ -1041,7 +1250,7 @@
           if (contributions[output.parameterId] == null) {
             contributions[output.parameterId] = parameter.default;
           }
-          contributions[output.parameterId] += state.value * scale + offset;
+          contributions[output.parameterId] += sampledValue * scale + offset;
         });
       });
       Object.keys(contributions).forEach(function (parameterId) {
@@ -1058,7 +1267,23 @@
     return {
       step: step,
       reset: reset,
-      getStates: function () { return deepClone(states); }
+      getStates: function () {
+        var result = {};
+        Object.keys(states).forEach(function (id) {
+          result[id] = { value: states[id].value, velocity: states[id].velocity };
+        });
+        return result;
+      },
+      getDiagnostics: function () {
+        return {
+          fixedFps: fixedFps,
+          fixedDelta: fixedDelta,
+          accumulator: accumulator,
+          lastSubsteps: lastSubsteps,
+          totalSteps: totalSteps,
+          droppedTime: droppedTime
+        };
+      }
     };
   }
 
@@ -1079,6 +1304,8 @@
     applyWarp: applyWarp,
     mergeReimportedModel: mergeReimportedModel,
     packTextureRects: packTextureRects,
+    generateSmoothChainWeights: generateSmoothChainWeights,
+    createIdleMotionRuntime: createIdleMotionRuntime,
     validateModel: validateModel,
     createEvaluator: createEvaluator,
     createPhysicsRuntime: createPhysicsRuntime,
