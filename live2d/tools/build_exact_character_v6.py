@@ -6,6 +6,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,8 +166,104 @@ def main() -> None:
         allocated = cv2.bitwise_or(allocated, layers[name])
     layers["body_base"] = cv2.bitwise_and(foreground, cv2.bitwise_not(allocated))
 
-    for name, mask in layers.items():
+    # A hard semantic partition can leave tiny disconnected outline fragments
+    # in body_base. When a neighboring part moves those fragments stay behind
+    # and read as black seams. Keep only the central body component and assign
+    # every residual pixel to the nearest semantic part without changing its
+    # source RGBA.
+    body_main = largest_component(layers["body_base"])
+    body_residual = cv2.bitwise_and(
+        layers["body_base"],
+        cv2.bitwise_not(body_main),
+    )
+    residual_pixels = body_residual > 0
+    if np.any(residual_pixels):
+        candidate_names = list(priority)
+        nearest_distances = np.stack(
+            [
+                ndimage.distance_transform_edt(layers[name] == 0)
+                for name in candidate_names
+            ],
+            axis=0,
+        )
+        nearest_parts = np.argmin(nearest_distances, axis=0)
+        for index, name in enumerate(candidate_names):
+            assigned = residual_pixels & (nearest_parts == index)
+            layers[name][assigned] = body_residual[assigned]
+    layers["body_base"] = body_main
+
+    export_layers = dict(layers)
+    export_layers["front_hair"] = cv2.bitwise_or(
+        cv2.bitwise_or(
+            cv2.bitwise_or(
+                layers["hair_side_l"],
+                layers["hair_side_r"],
+            ),
+            layers["hair_crown"],
+        ),
+        layers["hair_back"],
+    )
+    export_layers["bust"] = cv2.bitwise_or(layers["bust_l"], layers["bust_r"])
+    for name in (
+        "hair_side_l",
+        "hair_side_r",
+        "hair_crown",
+        "hair_back",
+        "bust_l",
+        "bust_r",
+    ):
+        export_layers.pop(name)
+
+    overlap_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    render_layers = {
+        name: cv2.bitwise_and(
+            cv2.dilate(mask, overlap_kernel, iterations=1),
+            foreground,
+        )
+        for name, mask in export_layers.items()
+    }
+
+    for name, mask in render_layers.items():
         save_layer(rgb, mask, name)
+
+    # Live2D-style material separation needs hidden overlap at moving joints.
+    # Keep these underlays behind every visible layer so the neutral composite
+    # remains pixel-identical while small independent motions cannot expose the
+    # transparent canvas through a hard-cut semantic mask.
+    seam_sources = {
+        "wing_l": (render_layers["wing_l"], 24),
+        "wing_r": (render_layers["wing_r"], 24),
+        "tail": (render_layers["tail"], 24),
+        "leg_l": (render_layers["leg_l"], 32),
+        "leg_r": (render_layers["leg_r"], 32),
+        "cloak_l": (render_layers["cloak_l"], 24),
+        "cloak_r": (render_layers["cloak_r"], 24),
+        "bust": (render_layers["bust"], 28),
+        "arm_l": (render_layers["arm_l"], 32),
+        "arm_r": (render_layers["arm_r"], 32),
+        "front_hair": (render_layers["front_hair"], 20),
+    }
+    nearest_hair_indices = ndimage.distance_transform_edt(
+        render_layers["front_hair"] == 0,
+        return_distances=False,
+        return_indices=True,
+    )
+    nearest_hair_rgb = rgb[
+        nearest_hair_indices[0],
+        nearest_hair_indices[1],
+    ]
+    for name, (mask, radius) in seam_sources.items():
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (radius * 2 + 1, radius * 2 + 1),
+        )
+        underlay = cv2.bitwise_and(
+            cv2.dilate(mask, kernel, iterations=1),
+            foreground,
+        )
+        underlay = cv2.bitwise_and(underlay, cv2.bitwise_not(mask))
+        underlay_rgb = nearest_hair_rgb if name == "front_hair" else rgb
+        save_layer(underlay_rgb, underlay, f"underlay_{name}")
 
     eye_l = ellipse_mask(size, (411, 213), (31, 24), 1.2)
     eye_r = ellipse_mask(size, (478, 213), (31, 24), 1.2)
@@ -206,13 +303,21 @@ def main() -> None:
     covered = reconstruction[:, :, 3] > 0
     expected = foreground > 0
     rgb_error = np.abs(reconstruction[:, :, :3].astype(np.int16) - rgb.astype(np.int16))
+    render_coverage_count = np.sum(
+        np.stack([mask > 0 for mask in render_layers.values()], axis=0),
+        axis=0,
+    )
     report = (
         f"source_foreground_pixels={int(expected.sum())}\n"
         f"covered_foreground_pixels={int((covered & expected).sum())}\n"
         f"missing_foreground_pixels={int((expected & ~covered).sum())}\n"
         f"extra_foreground_pixels={int((covered & ~expected).sum())}\n"
         f"max_rgb_error_on_covered_pixels={int(rgb_error[covered].max())}\n"
-        f"semantic_layers={len(layers)}\n"
+        f"semantic_layers={len(render_layers)}\n"
+        f"seam_underlays={len(seam_sources)}\n"
+        f"body_base_components=1\n"
+        f"render_overlap_radius_px=4\n"
+        f"render_overlap_pixels={int((render_coverage_count > 1).sum())}\n"
         f"expression_layers=6\n"
     )
     (OUT / "verification.txt").write_text(report, encoding="utf-8")

@@ -13,18 +13,27 @@ const WIDTH = 887;
 const HEIGHT = 1774;
 
 const layerSpecs = [
+  ['wing underlay_1', 'underlay_wing_l.png'],
+  ['wing underlay_2', 'underlay_wing_r.png'],
+  ['tail underlay', 'underlay_tail.png'],
+  ['leg underlay_1', 'underlay_leg_l.png'],
+  ['leg underlay_2', 'underlay_leg_r.png'],
+  ['cloak underlay_1', 'underlay_cloak_l.png'],
+  ['cloak underlay_2', 'underlay_cloak_r.png'],
+  ['bust underlay', 'underlay_bust.png'],
+  ['arm underlay_1', 'underlay_arm_l.png'],
+  ['arm underlay_2', 'underlay_arm_r.png'],
+  ['front hair underlay', 'underlay_front_hair.png'],
   ['wing_1', 'wing_l.png'],
   ['wing_2', 'wing_r.png'],
   ['tail', 'tail.png'],
   ['leg_1', 'leg_l.png'],
   ['leg_2', 'leg_r.png'],
   ['face underlay', 'head_underlay.png'],
-  ['back hair', 'hair_back.png'],
   ['body_base', 'body_base.png'],
   ['cloak_1', 'cloak_l.png'],
   ['cloak_2', 'cloak_r.png'],
-  ['bust_1', 'bust_l.png'],
-  ['bust_2', 'bust_r.png'],
+  ['bust', 'bust.png'],
   ['arm_1', 'arm_l.png'],
   ['arm_2', 'arm_r.png'],
   ['face', 'face_visible.png'],
@@ -38,9 +47,7 @@ const layerSpecs = [
   ['eye_close', 'eye_close.png'],
   ['mouth_close', 'mouth_close.png'],
   ['mouth_open', 'mouth_open.png'],
-  ['front hair_1', 'hair_side_l.png'],
-  ['front hair_2', 'hair_side_r.png'],
-  ['front hair_3', 'hair_crown.png'],
+  ['front hair', 'front_hair.png'],
 ];
 
 function pngToImageData(file) {
