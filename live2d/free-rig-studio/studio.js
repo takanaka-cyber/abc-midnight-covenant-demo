@@ -7,11 +7,40 @@
   var overlay = overlayCanvas.getContext('2d');
   var stage = document.getElementById('stage');
   var isEmbedded = new URLSearchParams(window.location.search).has('embed');
-  var embeddedExpression = {
-    eyeScaleL: 1,
-    eyeScaleR: 1,
-    mouthOpen: 0.06
+  var expressionPresets = {
+    neutral: {
+      eyeScaleL: 1, eyeScaleR: 1, eyeSmileL: 0, eyeSmileR: 0,
+      eyeballX: 0, eyeballY: 0, eyeballForm: 0,
+      mouthOpen: 0.04, mouthForm: 0.08, cheek: 0,
+      poseAngleZ: 0, poseBodyX: 0, poseBodyZ: 0
+    },
+    concerned: {
+      eyeScaleL: 0.86, eyeScaleR: 0.86, eyeSmileL: 0, eyeSmileR: 0,
+      eyeballX: -0.08, eyeballY: 0.08, eyeballForm: 0,
+      mouthOpen: 0.08, mouthForm: -0.24, cheek: 0,
+      poseAngleZ: -0.08, poseBodyX: -0.04, poseBodyZ: 0.03
+    },
+    serious: {
+      eyeScaleL: 0.74, eyeScaleR: 0.74, eyeSmileL: 0, eyeSmileR: 0,
+      eyeballX: 0.05, eyeballY: -0.04, eyeballForm: -0.06,
+      mouthOpen: 0.02, mouthForm: -0.14, cheek: 0,
+      poseAngleZ: 0.05, poseBodyX: 0.08, poseBodyZ: -0.03
+    },
+    smile: {
+      eyeScaleL: 0.88, eyeScaleR: 0.88, eyeSmileL: 0.6, eyeSmileR: 0.6,
+      eyeballX: 0, eyeballY: -0.02, eyeballForm: 0.04,
+      mouthOpen: 0.1, mouthForm: 0.78, cheek: 0.3,
+      poseAngleZ: 0.14, poseBodyX: 0.04, poseBodyZ: -0.05
+    },
+    alluring: {
+      eyeScaleL: 0.58, eyeScaleR: 0.64, eyeSmileL: 0.3, eyeSmileR: 0.22,
+      eyeballX: 0.12, eyeballY: -0.12, eyeballForm: -0.08,
+      mouthOpen: 0.07, mouthForm: 0.68, cheek: 0.55,
+      poseAngleZ: 0.34, poseBodyX: 0.14, poseBodyZ: -0.14
+    }
   };
+  var embeddedExpression = Object.assign({}, expressionPresets.neutral);
+  var performanceRuntime = Core.createPerformanceRuntime(expressionPresets, 0x51ccaba);
   var model = null;
   var evaluator = null;
   var evaluated = null;
@@ -57,15 +86,8 @@
   }
 
   function applyEmbeddedExpression(name) {
-    var expressions = {
-      neutral: { eyeScaleL: 1, eyeScaleR: 1, mouthOpen: 0.06 },
-      concerned: { eyeScaleL: 0.86, eyeScaleR: 0.86, mouthOpen: 0.12 },
-      serious: { eyeScaleL: 0.76, eyeScaleR: 0.76, mouthOpen: 0.02 },
-      smile: { eyeScaleL: 0.9, eyeScaleR: 0.9, mouthOpen: 0.28 }
-    };
-    embeddedExpression = expressions[name] || expressions.neutral;
+    performanceRuntime.setExpression(name, 0.5);
     if (!model) return;
-    parameterValues.MouthOpen = embeddedExpression.mouthOpen;
     evaluateAndRender();
   }
 
@@ -849,12 +871,60 @@
         part.transform.opacity = 0;
         part.bindings[eyeParameter] = binding([0, 1], [{ opacity: 1 }, { opacity: 0 }]);
       }
+      var eyeSmileParameter = layer.side === 'L'
+        ? 'EyeSmileL' : layer.side === 'R' ? 'EyeSmileR' : null;
+      if (eyeSmileParameter && layer.fade === 'eyeOpen') {
+        part.bindings[eyeSmileParameter] = binding([0, 1], [
+          { y: 0, scaleY: 1, meshOffsets: Core.createZeroOffsets(part.mesh.vertices.length) },
+          {
+            y: layer.h * 0.14,
+            scaleY: 0.72,
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x) {
+              var arch = 1 - Math.abs(x - 0.5) * 2;
+              return [0, -Math.max(0, arch) * 1.6];
+            })
+          }
+        ]);
+      }
+      if (layer.name.indexOf('irides') === 0) {
+        part.bindings.EyeBallX = binding([-1, 0, 1], [
+          { x: -3.8 }, { x: 0 }, { x: 3.8 }
+        ]);
+        part.bindings.EyeBallY = binding([-1, 0, 1], [
+          { y: 2.8 }, { y: 0 }, { y: -2.8 }
+        ]);
+        part.bindings.EyeBallForm = binding([-1, 0, 1], [
+          { scaleX: 0.9, scaleY: 0.9 },
+          { scaleX: 1, scaleY: 1 },
+          { scaleX: 1.1, scaleY: 1.1 }
+        ]);
+      }
       if (layer.fade === 'mouthOpen') {
         part.transform.opacity = 0;
-        part.bindings.MouthOpen = binding([0, 1], [{ opacity: 0 }, { opacity: 1 }]);
+        part.bindings.MouthOpen = binding([0, 1], [
+          { opacity: 0, scaleY: 0.92 },
+          { opacity: 1, scaleY: 1.34 }
+        ]);
       }
       if (layer.fade === 'mouthClose') {
         part.bindings.MouthOpen = binding([0, 1], [{ opacity: 1 }, { opacity: 0 }]);
+      }
+      if (layer.fade === 'mouthOpen' || layer.fade === 'mouthClose') {
+        part.bindings.MouthForm = binding([-1, 0, 1], [
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x) {
+              var corner = Math.pow(Math.abs(x - 0.5) * 2, 1.4);
+              return [0, -3.4 + corner * 5.2];
+            })
+          },
+          { meshOffsets: Core.createZeroOffsets(part.mesh.vertices.length) },
+          {
+            meshOffsets: meshOffsets(part.mesh, layer.w, layer.h, function (x) {
+              var corner = Math.pow(Math.abs(x - 0.5) * 2, 1.4);
+              return [0, 1.2 - corner * 5.6];
+            })
+          }
+        ]);
       }
       if (!isUnderlay && /^wing_/.test(motionBase)) {
         var wingDirection = /_1$/.test(motionBase) ? 1 : -1;
@@ -885,6 +955,79 @@
       nodes.push(part);
       byOriginalName[layer.name] = part;
     });
+
+    function addGeneratedOverlay(name, canvas, x, y, drawOrder, baseOpacity, bindings) {
+      var id = uniqueId('part_' + slug(name), usedIds);
+      var textureId = 'tex_' + id;
+      textures.push({
+        id: textureId,
+        name: name,
+        width: canvas.width,
+        height: canvas.height,
+        src: canvas.toDataURL('image/png')
+      });
+      var part = {
+        id: id,
+        name: name,
+        type: 'part',
+        parentId: 'head_warp',
+        textureId: textureId,
+        visible: true,
+        maskIds: [],
+        source: {
+          kind: 'generated-expression-overlay',
+          sourceId: null,
+          path: [{ name: name, occurrence: 1 }],
+          groupPath: [],
+          size: { width: canvas.width, height: canvas.height },
+          baseTransform: {
+            x: x, y: y, rotation: 0, scaleX: 1, scaleY: 1,
+            opacity: baseOpacity, drawOrder: drawOrder
+          }
+        },
+        transform: {
+          x: x, y: y, rotation: 0, scaleX: 1, scaleY: 1,
+          opacity: baseOpacity, drawOrder: drawOrder
+        },
+        mesh: Core.createRectMesh(canvas.width, canvas.height, 6, 3),
+        bindings: bindings || {}
+      };
+      nodes.push(part);
+      byOriginalName[name] = part;
+      return part;
+    }
+
+    if (anchors.eyeL && anchors.eyeR && anchors.mouth) {
+      var cheekWidth = Math.max(96, Math.round(faceWidth * 0.92));
+      var cheekHeight = Math.max(28, Math.round(faceWidth * 0.22));
+      var cheekCanvas = document.createElement('canvas');
+      cheekCanvas.width = cheekWidth;
+      cheekCanvas.height = cheekHeight;
+      var cheekContext = cheekCanvas.getContext('2d');
+      [0.2, 0.8].forEach(function (centerX) {
+        var gradient = cheekContext.createRadialGradient(
+          cheekWidth * centerX, cheekHeight * 0.5, 0,
+          cheekWidth * centerX, cheekHeight * 0.5, cheekHeight * 0.5
+        );
+        gradient.addColorStop(0, 'rgba(210, 82, 107, 0.48)');
+        gradient.addColorStop(0.55, 'rgba(210, 82, 107, 0.2)');
+        gradient.addColorStop(1, 'rgba(210, 82, 107, 0)');
+        cheekContext.fillStyle = gradient;
+        cheekContext.fillRect(0, 0, cheekWidth, cheekHeight);
+      });
+      var mouthPart = byOriginalName.mouth_close || byOriginalName.mouth_open;
+      addGeneratedOverlay(
+        'cheek_blush',
+        cheekCanvas,
+        anchors.neckPivot.cx - cheekWidth * 0.5,
+        anchors.mouth.y0 - cheekHeight * 1.15,
+        Number(mouthPart && mouthPart.transform.drawOrder || 950) - 2,
+        0,
+        {
+          Cheek: binding([0, 1], [{ opacity: 0 }, { opacity: 0.62 }])
+        }
+      );
+    }
 
     (sourceHierarchy && sourceHierarchy.groups || []).forEach(function (group) {
       var represented = Object.keys(sourceGroupsByDomain).some(function (key) {
@@ -1054,8 +1197,36 @@
           standard: { id: 'ParamEyeROpen', min: 0, default: 1, max: 1, scale: 1 }
         },
         {
+          id: 'EyeSmileL', name: 'Left eye smile', min: 0, max: 1, default: 0,
+          standard: { id: 'ParamEyeLSmile', min: 0, default: 0, max: 1, scale: 1 }
+        },
+        {
+          id: 'EyeSmileR', name: 'Right eye smile', min: 0, max: 1, default: 0,
+          standard: { id: 'ParamEyeRSmile', min: 0, default: 0, max: 1, scale: 1 }
+        },
+        {
+          id: 'EyeBallX', name: 'Eyeball X', min: -1, max: 1, default: 0,
+          standard: { id: 'ParamEyeBallX', min: -1, default: 0, max: 1, scale: 1 }
+        },
+        {
+          id: 'EyeBallY', name: 'Eyeball Y', min: -1, max: 1, default: 0,
+          standard: { id: 'ParamEyeBallY', min: -1, default: 0, max: 1, scale: 1 }
+        },
+        {
+          id: 'EyeBallForm', name: 'Eyeball form', min: -1, max: 1, default: 0,
+          standard: { id: 'ParamEyeBallForm', min: -1, default: 0, max: 1, scale: 1 }
+        },
+        {
+          id: 'MouthForm', name: 'Mouth form', min: -1, max: 1, default: 0,
+          standard: { id: 'ParamMouthForm', min: -1, default: 0, max: 1, scale: 1 }
+        },
+        {
           id: 'MouthOpen', name: 'Mouth open', min: 0, max: 1, default: 0,
           standard: { id: 'ParamMouthOpenY', min: 0, default: 0, max: 1, scale: 1 }
+        },
+        {
+          id: 'Cheek', name: 'Cheek blush', min: 0, max: 1, default: 0,
+          standard: { id: 'ParamCheek', min: 0, default: 0, max: 1, scale: 1 }
         },
         {
           id: 'Breath', name: 'Breath', min: 0, max: 1, default: 0,
@@ -1431,6 +1602,7 @@
         idleBlend: idleBlend,
         reducedMotion: reducedMotionQuery.matches,
         idle: idleRuntime.getDiagnostics(),
+        performance: performanceRuntime.getDiagnostics(),
         frameDeltaMs: frameDeltas.length ? frameDeltas[frameDeltas.length - 1] : 0
       },
       glues: (model.glues || []).length,
@@ -3131,6 +3303,9 @@
       changed = true;
     }
     if (isEmbedded) {
+      var performanceScale = reducedMotionQuery.matches ? 0.35 : 1;
+      var performance = performanceRuntime.step(dt, performanceScale);
+      embeddedExpression = performance.expression;
       parameterValues.EyeOpenL = Math.max(
         0,
         Math.min(1, Number(parameterValues.EyeOpenL == null ? 1 : parameterValues.EyeOpenL)
@@ -3141,7 +3316,39 @@
         Math.min(1, Number(parameterValues.EyeOpenR == null ? 1 : parameterValues.EyeOpenR)
           * embeddedExpression.eyeScaleR)
       );
-      parameterValues.MouthOpen = embeddedExpression.mouthOpen;
+      parameterValues.EyeSmileL = embeddedExpression.eyeSmileL;
+      parameterValues.EyeSmileR = embeddedExpression.eyeSmileR;
+      parameterValues.EyeBallX = embeddedExpression.eyeballX;
+      parameterValues.EyeBallY = embeddedExpression.eyeballY;
+      parameterValues.EyeBallForm = embeddedExpression.eyeballForm;
+      parameterValues.MouthForm = Core.clamp(
+        Number(embeddedExpression.mouthForm || 0) + Number(performance.talkMouthForm || 0),
+        -1,
+        1
+      );
+      parameterValues.Cheek = embeddedExpression.cheek;
+      parameterValues.MouthOpen = Math.max(
+        embeddedExpression.mouthOpen,
+        performance.talkMouth
+      );
+      var performanceOffsets = Object.assign({}, performance.offsets, {
+        AngleZ: Number(performance.offsets.AngleZ || 0) + Number(embeddedExpression.poseAngleZ || 0),
+        BodyAngleX: Number(performance.offsets.BodyAngleX || 0) +
+          Number(embeddedExpression.poseBodyX || 0),
+        BodyAngleZ: Number(performance.offsets.BodyAngleZ || 0) +
+          Number(embeddedExpression.poseBodyZ || 0)
+      });
+      Object.keys(performanceOffsets).forEach(function (parameterId) {
+        var parameter = model.parameters.find(function (entry) {
+          return entry.id === parameterId;
+        });
+        if (!parameter || parameterValues[parameterId] == null) return;
+        parameterValues[parameterId] = Core.clamp(
+          Number(parameterValues[parameterId]) + Number(performanceOffsets[parameterId] || 0),
+          parameter.min,
+          parameter.max
+        );
+      });
       changed = true;
     }
     if (physicsEnabled && physicsRuntime) {
@@ -3349,9 +3556,14 @@
         fitEmbeddedCanvas();
       } else if (event.data.type === 'anime25d-expression') {
         applyEmbeddedExpression(event.data.name);
+      } else if (event.data.type === 'anime25d-talk') {
+        performanceRuntime.setTalk(event.data.active);
+      } else if (event.data.type === 'anime25d-motion') {
+        performanceRuntime.triggerGesture(event.data.name);
       }
     });
     loadSample().then(function () {
+      performanceRuntime.reset();
       applyEmbeddedExpression('neutral');
       fitEmbeddedCanvas();
       notifyEmbedded('anime25d-ready', {

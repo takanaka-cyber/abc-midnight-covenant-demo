@@ -680,36 +680,36 @@
       lastEyeOpen = Math.min(eyeOpenL, eyeOpenR);
       return {
         AngleX: (
-          Math.sin(time * 0.52) * 0.22 +
-          Math.sin(time * 0.19 + 1.1) * 0.055
+          Math.sin(time * 0.52) * 0.34 +
+          Math.sin(time * 0.19 + 1.1) * 0.08
         ) * scale,
         AngleY: (
-          Math.sin(time * 0.37 + 0.82) * 0.115 +
-          Math.sin(time * 0.13) * 0.035
+          Math.sin(time * 0.37 + 0.82) * 0.18 +
+          Math.sin(time * 0.13) * 0.05
         ) * scale,
         AngleZ: (
-          Math.sin(time * 0.31 + 1.36) * 0.16 +
-          Math.sin(time * 0.11 + 0.2) * 0.04
+          Math.sin(time * 0.31 + 1.36) * 0.26 +
+          Math.sin(time * 0.11 + 0.2) * 0.07
         ) * scale,
         BodyAngleX: (
-          Math.sin(time * 0.235 - 0.4) * 0.19 +
-          Math.sin(time * 0.08 + 1.7) * 0.045
+          Math.sin(time * 0.235 - 0.4) * 0.3 +
+          Math.sin(time * 0.08 + 1.7) * 0.065
         ) * scale,
         BodyAngleY: (
-          Math.sin(time * 0.29 + 0.55) * 0.09 +
-          Math.sin(time * 0.12 - 0.7) * 0.025
+          Math.sin(time * 0.29 + 0.55) * 0.14 +
+          Math.sin(time * 0.12 - 0.7) * 0.04
         ) * scale,
         BodyAngleZ: (
-          Math.sin(time * 0.22 - 0.75) * 0.18 +
-          Math.sin(time * 0.071 + 0.4) * 0.035
+          Math.sin(time * 0.22 - 0.75) * 0.29 +
+          Math.sin(time * 0.071 + 0.4) * 0.05
         ) * scale,
         ShoulderMotion: (
-          Math.sin(breathPhase - 0.35) * 0.31 +
-          Math.sin(time * 0.47 + 1.2) * 0.045
+          Math.sin(breathPhase - 0.35) * 0.38 +
+          Math.sin(time * 0.47 + 1.2) * 0.06
         ) * scale,
         HipShift: (
-          Math.sin(time * 0.205 + 1.85) * 0.2 +
-          Math.sin(time * 0.063 - 0.2) * 0.035
+          Math.sin(time * 0.205 + 1.85) * 0.28 +
+          Math.sin(time * 0.063 - 0.2) * 0.05
         ) * scale,
         Breath: 0.5 + (breath - 0.5) * scale,
         EyeOpenL: eyeOpenL,
@@ -727,6 +727,180 @@
           blinkCount: blinkCount,
           nextBlink: nextBlink,
           eyeOpen: lastEyeOpen
+        };
+      }
+    };
+  }
+
+  function createPerformanceRuntime(presets, seed) {
+    presets = presets || {};
+    var fallback = presets.neutral || {};
+    var initialSeed = (Number(seed) || 0xface2718) >>> 0;
+    var randomState = initialSeed;
+    var currentName = presets.neutral ? 'neutral' : Object.keys(presets)[0];
+    var from = deepClone(presets[currentName] || fallback);
+    var current = deepClone(from);
+    var target = deepClone(from);
+    var fadeElapsed = 1;
+    var fadeDuration = 0.5;
+    var talkActive = false;
+    var talkTime = 0;
+    var nextSyllable = 0;
+    var talkTarget = 0;
+    var talkValue = 0;
+    var talkFormTarget = 0;
+    var talkFormValue = 0;
+    var gestureName = null;
+    var gestureTime = 0;
+
+    function random() {
+      randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+      return randomState / 4294967296;
+    }
+
+    function keysForExpression() {
+      var seen = {};
+      [fallback, from, current, target].forEach(function (entry) {
+        Object.keys(entry || {}).forEach(function (key) { seen[key] = true; });
+      });
+      return Object.keys(seen);
+    }
+
+    function sampleExpression(t) {
+      var eased = smoothstep(t);
+      var result = {};
+      keysForExpression().forEach(function (key) {
+        var defaultValue = Number(fallback[key] || 0);
+        var fromValue = from[key] == null ? defaultValue : Number(from[key]);
+        var targetValue = target[key] == null ? defaultValue : Number(target[key]);
+        result[key] = lerp(fromValue, targetValue, eased);
+      });
+      return result;
+    }
+
+    function setExpression(name, duration) {
+      from = deepClone(current);
+      target = deepClone(presets[name] || fallback);
+      currentName = presets[name] ? name : 'neutral';
+      fadeElapsed = 0;
+      fadeDuration = Math.max(0.08, Number(duration == null ? 0.5 : duration));
+    }
+
+    function setTalk(active) {
+      talkActive = Boolean(active);
+      if (!talkActive) {
+        talkTarget = 0;
+        talkFormTarget = 0;
+      }
+    }
+
+    function triggerGesture(name) {
+      gestureName = name || 'nod';
+      gestureTime = 0;
+    }
+
+    function sampleGesture(deltaTime) {
+      var result = {
+        AngleX: 0,
+        AngleY: 0,
+        AngleZ: 0,
+        BodyAngleX: 0,
+        BodyAngleZ: 0,
+        ShoulderMotion: 0,
+        WingSwing: 0,
+        TailSwing: 0
+      };
+      if (!gestureName) return result;
+      gestureTime += deltaTime;
+      var progress;
+      if (gestureName === 'nod') {
+        progress = clamp(gestureTime / 0.72, 0, 1);
+        result.AngleY = Math.sin(progress * Math.PI * 2) * -0.23;
+        result.BodyAngleX = Math.sin(progress * Math.PI) * 0.08;
+      } else if (gestureName === 'invite') {
+        progress = clamp(gestureTime / 1.05, 0, 1);
+        result.AngleZ = Math.sin(progress * Math.PI) * 0.24;
+        result.BodyAngleZ = Math.sin(progress * Math.PI) * -0.12;
+        result.WingSwing = Math.sin(progress * Math.PI) * 0.16;
+        result.TailSwing = Math.sin(progress * Math.PI * 1.5) * 0.12;
+      } else {
+        progress = 1;
+      }
+      if (progress >= 1) gestureName = null;
+      return result;
+    }
+
+    function step(deltaTime, motionScale) {
+      var dt = clamp(Number(deltaTime) || 0, 0, 0.1);
+      var scale = motionScale == null ? 1 : clamp(Number(motionScale), 0, 1);
+      fadeElapsed += dt;
+      current = sampleExpression(clamp(fadeElapsed / fadeDuration, 0, 1));
+
+      talkTime += dt;
+      if (talkActive && talkTime >= nextSyllable) {
+        nextSyllable = talkTime + 0.07 + random() * 0.09;
+        talkTarget = random() < 0.16 ? 0.08 : 0.48 + random() * 0.52;
+        talkFormTarget = -0.28 + random() * 0.72;
+      }
+      if (!talkActive) {
+        talkTarget = 0;
+        talkFormTarget = 0;
+      }
+      talkValue += (talkTarget - talkValue) * Math.min(1, dt * (talkActive ? 22 : 15));
+      talkFormValue += (talkFormTarget - talkFormValue) *
+        Math.min(1, dt * (talkActive ? 18 : 12));
+      if (talkValue < 0.001) talkValue = 0;
+      if (Math.abs(talkFormValue) < 0.001) talkFormValue = 0;
+
+      var gesture = sampleGesture(dt);
+      if (talkActive) {
+        gesture.AngleY += Math.sin(talkTime * 5.1) * 0.045;
+        gesture.AngleX += Math.sin(talkTime * 2.7 + 0.8) * 0.025;
+        gesture.ShoulderMotion += Math.sin(talkTime * 3.4) * 0.035;
+      }
+      Object.keys(gesture).forEach(function (key) {
+        gesture[key] *= scale;
+      });
+      return {
+        expression: deepClone(current),
+        talkMouth: talkValue,
+        talkMouthForm: talkFormValue,
+        offsets: gesture
+      };
+    }
+
+    function reset() {
+      randomState = initialSeed;
+      currentName = presets.neutral ? 'neutral' : Object.keys(presets)[0];
+      from = deepClone(presets[currentName] || fallback);
+      current = deepClone(from);
+      target = deepClone(from);
+      fadeElapsed = 1;
+      talkActive = false;
+      talkTime = 0;
+      nextSyllable = 0;
+      talkTarget = 0;
+      talkValue = 0;
+      talkFormTarget = 0;
+      talkFormValue = 0;
+      gestureName = null;
+      gestureTime = 0;
+    }
+
+    return {
+      step: step,
+      reset: reset,
+      setExpression: setExpression,
+      setTalk: setTalk,
+      triggerGesture: triggerGesture,
+      getDiagnostics: function () {
+        return {
+          expression: currentName,
+          fade: clamp(fadeElapsed / fadeDuration, 0, 1),
+          talking: talkActive,
+          talkMouth: talkValue,
+          talkMouthForm: talkFormValue,
+          gesture: gestureName
         };
       }
     };
@@ -1324,6 +1498,7 @@
     packTextureRects: packTextureRects,
     generateSmoothChainWeights: generateSmoothChainWeights,
     createIdleMotionRuntime: createIdleMotionRuntime,
+    createPerformanceRuntime: createPerformanceRuntime,
     validateModel: validateModel,
     createEvaluator: createEvaluator,
     createPhysicsRuntime: createPhysicsRuntime,

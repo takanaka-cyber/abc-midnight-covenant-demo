@@ -548,3 +548,58 @@ test('rejects invalid glue, skin, and atlas references', () => {
   assert.ok(validation.errors.some((error) => error.includes('invalid skin part')));
   assert.ok(validation.errors.some((error) => error.includes('missing atlas texture')));
 });
+
+test('fades expression values without replacing the active blink waveform', () => {
+  const runtime = Core.createPerformanceRuntime({
+    neutral: { eyeScaleL: 1, eyeScaleR: 1, mouthForm: 0 },
+    smile: { eyeScaleL: 0.8, eyeScaleR: 0.8, mouthForm: 0.7 }
+  }, 123);
+  runtime.setExpression('smile', 0.5);
+  let frame;
+  for (let index = 0; index < 30; index += 1) frame = runtime.step(1 / 60, 1);
+  assert.ok(Math.abs(frame.expression.eyeScaleL - 0.8) < 0.001);
+  assert.ok(Math.abs(frame.expression.mouthForm - 0.7) < 0.001);
+  assert.equal(Object.hasOwn(frame.expression, 'eyeOpenL'), false);
+});
+
+test('produces bounded syllabic mouth motion and settles after speech', () => {
+  const runtime = Core.createPerformanceRuntime({
+    neutral: { mouthOpen: 0.04 }
+  }, 456);
+  runtime.setTalk(true);
+  let peak = 0;
+  let formRange = [Infinity, -Infinity];
+  for (let index = 0; index < 120; index += 1) {
+    const frame = runtime.step(1 / 60, 1);
+    peak = Math.max(peak, frame.talkMouth);
+    formRange = [
+      Math.min(formRange[0], frame.talkMouthForm),
+      Math.max(formRange[1], frame.talkMouthForm)
+    ];
+  }
+  assert.ok(peak > 0.6);
+  assert.ok(peak <= 1);
+  assert.ok(formRange[0] >= -1 && formRange[1] <= 1);
+  assert.ok(formRange[1] - formRange[0] > 0.2);
+  runtime.setTalk(false);
+  let frame;
+  for (let index = 0; index < 60; index += 1) frame = runtime.step(1 / 60, 1);
+  assert.ok(frame.talkMouth < 0.001);
+  assert.ok(Math.abs(frame.talkMouthForm) < 0.001);
+});
+
+test('plays a gesture once and returns to a neutral offset', () => {
+  const runtime = Core.createPerformanceRuntime({
+    neutral: { mouthOpen: 0 }
+  }, 789);
+  runtime.triggerGesture('nod');
+  let peak = 0;
+  let frame;
+  for (let index = 0; index < 70; index += 1) {
+    frame = runtime.step(1 / 60, 1);
+    peak = Math.max(peak, Math.abs(frame.offsets.AngleY));
+  }
+  assert.ok(peak > 0.15);
+  assert.equal(runtime.getDiagnostics().gesture, null);
+  assert.ok(Math.abs(frame.offsets.AngleY) < 0.001);
+});

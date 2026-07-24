@@ -11,6 +11,7 @@
     smile: "assets/character/succubus_STANDEE_live2d_v4.webp",
     serious: "assets/character/succubus_STANDEE_live2d_v4.webp",
     concerned: "assets/character/succubus_STANDEE_live2d_v4.webp",
+    alluring: "assets/character/succubus_STANDEE_live2d_v4.webp",
   };
 
   Object.values(ASSETS).forEach((src) => {
@@ -60,7 +61,7 @@
       quest: "QUEST 04 / ENDING ROUTE",
       prompt: "悩みを整理した先で、<em>どう過ごせたら嬉しい</em>？",
       line: "最後は、治療名じゃなくて望む未来を選んで。あなたの契約は、あなたのためのものよ。",
-      expression: "smile",
+      expression: "alluring",
       options: ["自分に自信を持つ", "温泉・サウナを楽しむ", "パートナーとの不安を減らす", "普段から気にせず過ごす", "まだ決めていない"],
     },
   ];
@@ -86,10 +87,19 @@
   const bossScreen = qs("#bossScreen");
   const resultScreen = qs("#resultScreen");
   let rigReady = false;
+  const pendingRigState = {
+    expression: "neutral",
+    talk: false,
+    motion: null,
+  };
 
   function postToRig(message) {
+    if (message?.type === "anime25d-expression") pendingRigState.expression = message.name;
+    if (message?.type === "anime25d-talk") pendingRigState.talk = Boolean(message.active);
+    if (message?.type === "anime25d-motion") pendingRigState.motion = message.name;
     if (!rigReady || !characterRig?.contentWindow || reduceMotion.matches) return;
     characterRig.contentWindow.postMessage(message, window.location.origin);
+    if (message?.type === "anime25d-motion") pendingRigState.motion = null;
   }
 
   window.addEventListener("message", (event) => {
@@ -103,6 +113,12 @@
       rigReady = true;
       stage.classList.add("is-rig-ready");
       postToRig({ type: "anime25d-fit" });
+      postToRig({ type: "anime25d-expression", name: pendingRigState.expression });
+      postToRig({ type: "anime25d-talk", active: pendingRigState.talk });
+      if (pendingRigState.motion) {
+        postToRig({ type: "anime25d-motion", name: pendingRigState.motion });
+        pendingRigState.motion = null;
+      }
     }
   });
 
@@ -145,10 +161,12 @@
 
   function typeDialogue(html) {
     if (reduceMotion.matches) {
+      postToRig({ type: "anime25d-talk", active: false });
       dialogueText.innerHTML = html;
       return Promise.resolve();
     }
 
+    postToRig({ type: "anime25d-talk", active: true });
     const tokens = html.match(/<[^>]+>|./gs) || [];
     let index = 0;
     let output = "";
@@ -158,6 +176,7 @@
       const draw = () => {
         if (index >= tokens.length) {
           dialogueText.innerHTML = html;
+          postToRig({ type: "anime25d-talk", active: false });
           resolve();
           return;
         }
@@ -181,6 +200,9 @@
     state.locked = false;
     chapterLabel.textContent = question.chapter;
     setExpression(question.expression);
+    if (question.expression === "alluring") {
+      postToRig({ type: "anime25d-motion", name: "invite" });
+    }
     typeDialogue(question.line);
 
     panel.innerHTML = `
@@ -216,6 +238,8 @@
     state.answers[question.key] = button.dataset.value;
     updateProgress();
     playTone("select");
+    setExpression("smile");
+    postToRig({ type: "anime25d-motion", name: "nod" });
 
     await sleep(reduceMotion.matches ? 30 : 300);
     await showChapterGate(question);

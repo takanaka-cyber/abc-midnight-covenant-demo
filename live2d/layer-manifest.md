@@ -46,9 +46,9 @@
 ## v8 seam-safe full-body実体
 
 - PSDレイヤー: 35
-- runtime part: 39
-- runtime node: 56
-- Parameter: 24（うちCubism標準メタデータ14）
+- runtime part: 40
+- runtime node: 57
+- Parameter: 31（うちCubism標準メタデータ21）
 - Skinning: 7（左右外套、尾、両腕、両脚）
 - Physics group: 12
 - 可動境界: 元絵RGBの4px重なり代 + 11枚の隠れ下地
