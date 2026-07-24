@@ -1,6 +1,6 @@
 # Character rig PoC
 
-`main` の静止画LPを変更せず、`codex/live2d-rig-poc` でだけ検証する。
+`main` の静止画LPを変更せず、`codex/free-rig-editor-core` でだけ検証する。
 
 ## 採用候補
 
@@ -12,11 +12,14 @@
 
 このPoCは公式Live2D Cubism形式ではない。1枚絵をパーツ分けし、WebGLメッシュとスプリング物理でLive2D風に動かす方式を採る。
 
-## 現在の実装（v4）
+## 現在の実装（v6）
 
-- 元立ち絵: `source/abc_succubus_live2d_master_v4.png`
-- 透過立ち絵: `source/abc_succubus_live2d_cutout_v4.png`
-- PSD: `assets/abc_succubus_rig_v4.psd`
+- ユーザー採用元絵: `source/abc_succubus_live2d_master_v5_user_approved.png`
+- 透過・デスピル元絵: `source/abc_succubus_live2d_master_v5.png`
+- Live2D用レイヤー: `source/v6_layers/`
+- PSD: `assets/abc_succubus_rig_v6.psd`
+- 分解スクリプト: `tools/segment_approved_v6.py`、`tools/build_exact_head_v6.py`、`tools/build_exact_character_v6.py`
+- PSD生成: `tools/write_psd_v6.js`
 - 静止フォールバック: `../assets/character/succubus_STANDEE_live2d_v4.webp`
 - 埋め込みプレイヤー: `vendor/anime25d/index.html`
 - LP接続: 質問画面の静止画を残したまま、リグ準備完了後だけiframeへクロスフェード
@@ -24,7 +27,7 @@
 - `prefers-reduced-motion`: iframeを非表示にして静止画へ固定
 - upstream license: `vendor/anime25d/LICENSE`
 
-表示中のモーションは、まばたき、頭部スウェイ、前髪スプリング、ロングコート裾、呼吸、胸部局所スプリング。ランダム口パクと大きなランダム姿勢変更は記事LPでは無効にしている。
+v6のFree Rig Studioは、まばたき、口差分、頭部スウェイ、4層の髪スキニング、翼、尾、外套、腕、呼吸、胸部局所スプリングを独立パラメータで持つ。ランダム口パクと大きなランダム姿勢変更は記事LPでは無効にする。
 
 ## 必須モーション
 
@@ -53,17 +56,17 @@
 4. まばたき、呼吸、髪・衣装、胸の順に単体検証
 5. LPへ組み込み、静止フォールバックと負荷を検証
 
-## 実機QA
+## v6ローカルQA
 
-- 375×812: リグ表示、顔・胸の非遮蔽、横overflow 0
-- PSD再合成: 可視領域IoU `1.0`、欠損 `0px`、余分 `0px`
-- 自動まばたき8秒計測: 開度 `1.000` → `0.00385`、閉眼サンプル8件
-- 胸部変形8秒計測: 強度 `3.0`、`-7.23px` → `+6.22px`
-- runtime warning: 0、runtime part: 15
-- console / page error: 0（faviconのdata URI化後）
-- reduced motion: iframe `display:none`、静止画opacity `1`
-- 4問回答→ボス→結果: 4回答のreadback一致、横overflow 0
+- PSD: 887×1774、26レイヤー、readback成功
+- 可視RGB再合成: 欠損 `0px`、余分 `0px`、RGB最大誤差 `0`
+- runtime: parts 30 / params 14 / physics 6 / skin 4 / errors 0
+- 自動Idle: 60Hz、106fps、`blink 1`を実測
+- 1秒差のIdle 2フレーム: 変化 `46,560px`
+- 極値入力で変化確認: 髪、胸、左右翼、腕、外套、尾
+- 開眼・閉眼・口開きの実画面拡大スクリーンショットを保存
+- 既存20テスト: 全件PASS
 
-証跡は `qa/live2d-v4-mobile-motion.webm`、`qa/live2d-v4-mobile-open.png`、`qa/live2d-v4-mobile-closed.png`、`qa/live2d-v4-runtime-stress.png`、`qa/live2d-v4-reduced-motion.png`。
+v6証跡は `output/playwright/v6-neutral-underlay.png`、`output/playwright/v6-open-closed-despill-qa.png`、`output/playwright/v6-mouth-closed-open-qa.png`、`output/playwright/v6-motion-extreme-despill.png`、`output/playwright/v6-idle-frame-pair.png`。
 
-強い姿勢入力（angle X `0.65` / Y `-0.5` / Z `0.65` / body `0.7`）でも、顔・首・角・胸元に背景露出やパーツずれがないことを目視確認した。
+未完了: v6を375×812の記事LPへ接続した状態での再検証と、可動部の実運用振幅調整。

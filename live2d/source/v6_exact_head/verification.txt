@@ -1,0 +1,4 @@
+expected_head_pixels=62117
+covered_head_pixels=62117
+missing_head_pixels=0
+max_rgb_error_on_covered_pixels=0

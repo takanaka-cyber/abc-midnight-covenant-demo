@@ -36,6 +36,9 @@ Live2Dの独自ファイルを解析・互換実装するものではない。
 - 可逆なTexture Atlas生成・再生成・source texture復元
 - Atlasの重複・範囲外検証と再import後の自動再生成
 - 全Parameter極値での有限頂点監査
+- v6キャラの翼・尾・外套・腕・左右胸・4髪層の独立Parts
+- 翼・尾・外套・腕の独立spring Physics
+- ユーザー採用元絵の可視RGBを保持した分解と、生成した頭部隠れ下地
 
 Glue、Skinning、Texture Atlasの操作概念はLive2D Cubismの公開マニュアルを
 参照し、独自JSON schemaと独自評価器として実装している。
@@ -69,7 +72,6 @@ node --test live2d/free-rig-studio/tests/core.test.mjs
 - 複数Parameterの2D格子補間
 - Glue compatibilityのParameter別Keyform
 - Skinning用Mesh自動分割とGlue自動生成
-- 元PSDで分離されていない翼・尻尾・衣装の独立物理
 - 複数Texture Atlasと手動配置・回転
 - ArtPath
 - Undo stack

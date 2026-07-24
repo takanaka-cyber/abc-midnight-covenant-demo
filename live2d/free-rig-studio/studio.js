@@ -351,7 +351,7 @@
         meshRows = Math.max(meshRows, 8);
       }
       var parentId = layer.group === 'head' ? 'head_warp' : 'body_warp';
-      if (/^topwear/.test(base)) parentId = 'bust_warp';
+      if (/^(topwear|bust)/.test(base)) parentId = 'bust_warp';
       parentId = ensureSourceGroupChain(layer.sourceGroupPath || [], parentId);
       var part = {
         id: partId,
@@ -405,6 +405,43 @@
       if (layer.fade === 'mouthClose') {
         part.bindings.MouthOpen = binding([0, 1], [{ opacity: 1 }, { opacity: 0 }]);
       }
+      if (/^wing_/.test(base)) {
+        var wingSign = /_1$/.test(base) ? -1 : 1;
+        part.transform.pivotX = wingSign < 0 ? layer.w * 0.92 : layer.w * 0.08;
+        part.transform.pivotY = layer.h * 0.04;
+        part.bindings.WingSwing = binding([-1, 0, 1], [
+          { rotation: wingSign * -2.2 },
+          { rotation: 0 },
+          { rotation: wingSign * 2.2 }
+        ]);
+      }
+      if (/^tail/.test(base)) {
+        part.transform.pivotX = layer.w * 0.5;
+        part.transform.pivotY = layer.h * 0.03;
+        part.bindings.TailSwing = binding([-1, 0, 1], [
+          { rotation: -4.5 }, { rotation: 0 }, { rotation: 4.5 }
+        ]);
+      }
+      if (/^cloak_/.test(base)) {
+        var cloakSign = /_1$/.test(base) ? -1 : 1;
+        part.transform.pivotX = cloakSign < 0 ? layer.w * 0.82 : layer.w * 0.18;
+        part.transform.pivotY = layer.h * 0.03;
+        part.bindings.CloakSwing = binding([-1, 0, 1], [
+          { rotation: cloakSign * -1.6 },
+          { rotation: 0 },
+          { rotation: cloakSign * 1.6 }
+        ]);
+      }
+      if (/^arm_/.test(base)) {
+        var armSign = /_1$/.test(base) ? -1 : 1;
+        part.transform.pivotX = armSign < 0 ? layer.w * 0.9 : layer.w * 0.1;
+        part.transform.pivotY = layer.h * 0.03;
+        part.bindings.ArmSwing = binding([-1, 0, 1], [
+          { rotation: armSign * -0.9 },
+          { rotation: 0 },
+          { rotation: armSign * 0.9 }
+        ]);
+      }
       nodes.push(part);
       byOriginalName[layer.name] = part;
     });
@@ -423,19 +460,19 @@
       if (mask) node.maskIds = [mask.id];
     });
 
-    var hairPart = nodes.filter(function (node) {
+    var hairParts = nodes.filter(function (node) {
       return node.type === 'part' && /hair|髪/i.test(node.name);
     }).sort(function (left, right) {
       var leftSize = left.source && left.source.size || {};
       var rightSize = right.source && right.source.size || {};
       return Number(rightSize.height || 0) - Number(leftSize.height || 0);
-    })[0];
+    });
     var sampleSkins = [];
-    if (hairPart) {
+    hairParts.forEach(function (hairPart, hairIndex) {
       var hairSize = hairPart.source.size;
       var bones = [
         {
-          id: 'hair_root',
+          id: 'hair_' + hairIndex + '_root',
           name: 'Hair root',
           parentId: null,
           pivotX: hairSize.width * 0.5,
@@ -445,9 +482,9 @@
           angleOffset: 0
         },
         {
-          id: 'hair_upper',
+          id: 'hair_' + hairIndex + '_upper',
           name: 'Hair upper',
-          parentId: 'hair_root',
+          parentId: 'hair_' + hairIndex + '_root',
           pivotX: hairSize.width * 0.5,
           pivotY: hairSize.height * 0.38,
           parameterId: 'HairSwing',
@@ -455,9 +492,9 @@
           angleOffset: 0
         },
         {
-          id: 'hair_lower',
+          id: 'hair_' + hairIndex + '_lower',
           name: 'Hair lower',
-          parentId: 'hair_upper',
+          parentId: 'hair_' + hairIndex + '_upper',
           pivotX: hairSize.width * 0.5,
           pivotY: hairSize.height * 0.64,
           parameterId: 'HairSwing',
@@ -465,9 +502,9 @@
           angleOffset: 0
         },
         {
-          id: 'hair_tip',
+          id: 'hair_' + hairIndex + '_tip',
           name: 'Hair tip',
-          parentId: 'hair_lower',
+          parentId: 'hair_' + hairIndex + '_lower',
           pivotX: hairSize.width * 0.5,
           pivotY: hairSize.height * 0.86,
           parameterId: 'HairSwing',
@@ -479,13 +516,13 @@
         fadeStartY: hairSize.height * 0.06
       });
       sampleSkins.push({
-        id: 'skin_hair',
+        id: 'skin_hair_' + hairIndex,
         name: 'Hair chain',
         partId: hairPart.id,
         bones: bones,
         weights: weights
       });
-    }
+    });
 
     return {
       version: Core.VERSION,
@@ -510,7 +547,11 @@
         { id: 'MouthOpen', name: 'Mouth open', min: 0, max: 1, default: 0 },
         { id: 'Breath', name: 'Breath', min: 0, max: 1, default: 0 },
         { id: 'Bust', name: 'Bust spring', min: -1, max: 1, default: 0 },
-        { id: 'HairSwing', name: 'Hair swing', min: -1, max: 1, default: 0 }
+        { id: 'HairSwing', name: 'Hair swing', min: -1, max: 1, default: 0 },
+        { id: 'WingSwing', name: 'Wing swing', min: -1, max: 1, default: 0 },
+        { id: 'TailSwing', name: 'Tail swing', min: -1, max: 1, default: 0 },
+        { id: 'CloakSwing', name: 'Cloak swing', min: -1, max: 1, default: 0 },
+        { id: 'ArmSwing', name: 'Arm swing', min: -1, max: 1, default: 0 }
       ],
       textures: textures,
       nodes: nodes,
@@ -536,6 +577,50 @@
           ],
           outputs: [{ parameterId: 'HairSwing', scale: 1.25, offset: 0 }],
           settings: { stiffness: 16, damping: 3.6, mass: 1.1 }
+        },
+        {
+          id: 'physics_wing',
+          name: 'Wing follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'Breath', center: 0, weight: 0.7 },
+            { parameterId: 'BodyAngle', center: 0, weight: 0.3 }
+          ],
+          outputs: [{ parameterId: 'WingSwing', scale: 0.75, offset: 0 }],
+          settings: { stiffness: 11, damping: 3.2, mass: 1.4 }
+        },
+        {
+          id: 'physics_tail',
+          name: 'Tail follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'AngleZ', center: 0, weight: 0.8 },
+            { parameterId: 'BodyAngle', center: 0, weight: 0.35 }
+          ],
+          outputs: [{ parameterId: 'TailSwing', scale: 1.1, offset: 0 }],
+          settings: { stiffness: 9, damping: 2.8, mass: 1.25 }
+        },
+        {
+          id: 'physics_cloak',
+          name: 'Cloak follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'BodyAngle', center: 0, weight: 0.75 },
+            { parameterId: 'AngleZ', center: 0, weight: 0.25 }
+          ],
+          outputs: [{ parameterId: 'CloakSwing', scale: 0.8, offset: 0 }],
+          settings: { stiffness: 12, damping: 3.4, mass: 1.5 }
+        },
+        {
+          id: 'physics_arm',
+          name: 'Arm breathing follow-through',
+          enabled: true,
+          inputs: [
+            { parameterId: 'Breath', center: 0, weight: 0.65 },
+            { parameterId: 'BodyAngle', center: 0, weight: 0.2 }
+          ],
+          outputs: [{ parameterId: 'ArmSwing', scale: 0.55, offset: 0 }],
+          settings: { stiffness: 18, damping: 4.5, mass: 1.0 }
         }
       ],
       glues: [],
@@ -843,7 +928,7 @@
   async function loadSample() {
     try {
       setStatus('ABCサンプルPSDを取得中…');
-      var response = await fetch('../assets/abc_succubus_rig_v4.psd');
+      var response = await fetch('../assets/abc_succubus_rig_v6.psd');
       if (!response.ok) throw new Error('sample PSD HTTP ' + response.status);
       await loadPsdBuffer(await response.arrayBuffer(), 'ABC Succubus / Free Rig P2');
     } catch (error) {

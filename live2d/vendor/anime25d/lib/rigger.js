@@ -23,11 +23,17 @@
 
   var SLOTS = {
     'body_base':  { depth: 0.80, group: 'body' },
+    'wing':        { depth: 0.48, group: 'body', phys: 'wing' },
+    'face underlay': { depth: 0.52, group: 'head' },
     'back hair':   { depth: 0.55, group: 'head', phys: 'hair' },
+    'tail':        { depth: 0.78, group: 'body', phys: 'tail' },
+    'cloak':       { depth: 0.82, group: 'body', phys: 'cloak' },
     'bottomwear':  { depth: 0.88, group: 'body' },
     'legwear':     { depth: 0.84, group: 'body' },
     'neck':        { depth: 0.95, group: 'body' },
     'topwear':     { depth: 0.90, group: 'body' },
+    'bust':        { depth: 0.91, group: 'body' },
+    'arm':         { depth: 0.96, group: 'body', phys: 'arm' },
     'handwear':    { depth: 0.86, group: 'body' },
     'objects':     { depth: 1.04, group: 'body' },
     'earwear':     { depth: 0.97, group: 'head' },
