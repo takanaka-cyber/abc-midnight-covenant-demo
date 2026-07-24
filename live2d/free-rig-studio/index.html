@@ -11,7 +11,7 @@
   <header class="app-header">
     <div>
       <p class="eyebrow">DATA-DRIVEN 2D RIG AUTHORING</p>
-      <h1>Free Rig Studio <span>core P0</span></h1>
+      <h1>Free Rig Studio <span>core P1</span></h1>
     </div>
     <div class="toolbar" aria-label="モデル操作">
       <button id="loadSample" class="primary">ABCサンプル</button>
@@ -19,6 +19,7 @@
       <button id="openJson">JSONを開く</button>
       <button id="saveJson">JSON保存</button>
       <button id="resetParameters">Neutral</button>
+      <button id="togglePhysics" aria-pressed="true">Physics ON</button>
       <button id="toggleIdle" aria-pressed="false">Idle OFF</button>
     </div>
   </header>
@@ -142,6 +143,84 @@
           </div>
           <p class="hint">Partを選択後、Neutral状態で頂点をドラッグします。元画像のRGBは変更しません。</p>
           <button id="meshEdit" class="wide" aria-pressed="false">頂点編集を開始</button>
+
+          <div id="warpEditor" hidden>
+            <div class="divider"></div>
+            <div class="section-heading">
+              <strong>Warp points</strong>
+              <span id="warpState" class="status waiting">OFF</span>
+            </div>
+            <p class="hint">
+              対象Parameterと値を選び、点をドラッグします。default値では基準形状、
+              それ以外ではKeyformを更新します。
+            </p>
+            <button id="warpEdit" class="wide" aria-pressed="false">Warp点編集を開始</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="inspector-section physics-section">
+        <div class="panel-title compact">
+          <div>
+            <span>PHYSICS</span>
+            <strong>物理グループ</strong>
+          </div>
+          <span id="physicsCount" class="badge">0</span>
+        </div>
+        <div class="button-row">
+          <select id="physicsGroup" aria-label="Physics group"></select>
+          <button id="addPhysics">追加</button>
+          <button id="deletePhysics">削除</button>
+        </div>
+        <div id="physicsEmpty" class="hint">物理グループがありません。</div>
+        <div id="physicsInspector" hidden>
+          <label class="field">
+            <span>名前</span>
+            <input id="physicsName" type="text">
+          </label>
+          <div class="field-grid">
+            <label class="field">
+              <span>Input Parameter</span>
+              <select id="physicsInput"></select>
+            </label>
+            <label class="field">
+              <span>Output Parameter</span>
+              <select id="physicsOutput"></select>
+            </label>
+            <label class="field">
+              <span>Input center</span>
+              <input id="physicsCenter" type="number" step="0.01">
+            </label>
+            <label class="field">
+              <span>Input weight</span>
+              <input id="physicsWeight" type="number" step="0.01">
+            </label>
+            <label class="field">
+              <span>Output scale</span>
+              <input id="physicsScale" type="number" step="0.01">
+            </label>
+            <label class="field">
+              <span>Output offset</span>
+              <input id="physicsOffset" type="number" step="0.01">
+            </label>
+            <label class="field">
+              <span>Stiffness</span>
+              <input id="physicsStiffness" type="number" min="0.01" step="0.1">
+            </label>
+            <label class="field">
+              <span>Damping</span>
+              <input id="physicsDamping" type="number" min="0" step="0.1">
+            </label>
+            <label class="field">
+              <span>Mass</span>
+              <input id="physicsMass" type="number" min="0.01" step="0.1">
+            </label>
+          </div>
+          <label class="toggle-field">
+            <input id="physicsEnabled" type="checkbox">
+            <span>このグループを有効化</span>
+          </label>
+          <button id="applyPhysics" class="wide primary">物理設定を反映</button>
         </div>
       </section>
     </aside>

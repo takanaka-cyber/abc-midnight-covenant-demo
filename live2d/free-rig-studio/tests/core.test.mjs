@@ -120,9 +120,65 @@ test('applies rotation parents after local part transforms', () => {
 
 test('round-trips the model schema without losing keyforms', () => {
   const model = fixture();
+  model.nodes.splice(1, 0, {
+    id: 'psd_group_face',
+    name: 'Face group',
+    type: 'group',
+    parentId: 'root',
+    source: { path: ['Character', 'Face'] },
+    transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1, opacity: 1 },
+    bindings: {}
+  });
+  model.nodes.find((node) => node.id === 'warp').parentId = 'psd_group_face';
   const json = Core.exportModel(model);
   const restored = Core.importModel(json);
   assert.deepEqual(restored, model);
+});
+
+test('adds warp base offsets before parameter keyform deltas', () => {
+  const model = fixture();
+  model.nodes.find((node) => node.id === 'warp').warp.baseOffsets =
+    [2, 3, 2, 3, 2, 3, 2, 3];
+  const face = Core.createEvaluator(model).evaluate({ Turn: 1, Open: 1 })
+    .parts.find((part) => part.id === 'face');
+  assert.deepEqual(face.positions[0], [27, 23]);
+});
+
+test('inherits PSD group visibility through the node hierarchy', () => {
+  const model = fixture();
+  model.nodes.push({
+    id: 'hidden_group',
+    name: 'Hidden PSD group',
+    type: 'group',
+    parentId: 'warp',
+    visible: false,
+    transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1, opacity: 1 },
+    bindings: {}
+  });
+  model.nodes.find((node) => node.id === 'face').parentId = 'hidden_group';
+  const face = Core.createEvaluator(model).evaluate({ Turn: 0, Open: 1 })
+    .parts.find((part) => part.id === 'face');
+  assert.equal(face.visible, false);
+});
+
+test('steps generic physics from an arbitrary input parameter to an output parameter', () => {
+  const model = fixture();
+  model.parameters.push({ id: 'Swing', name: 'Swing', min: -1, max: 1, default: 0 });
+  model.physics = [{
+    id: 'physics_swing',
+    name: 'Swing spring',
+    enabled: true,
+    inputs: [{ parameterId: 'Turn', weight: 1, center: 0 }],
+    outputs: [{ parameterId: 'Swing', scale: 1, offset: 0 }],
+    settings: { stiffness: 20, damping: 4, mass: 1 }
+  }];
+  const runtime = Core.createPhysicsRuntime(model);
+  let output = {};
+  for (let index = 0; index < 20; index++) output = runtime.step({ Turn: 1 }, 1 / 60);
+  assert.ok(output.Swing > 0);
+  assert.ok(output.Swing <= 1);
+  runtime.reset();
+  assert.deepEqual(runtime.getStates().physics_swing, { value: 0, velocity: 0 });
 });
 
 test('rejects hierarchy cycles and missing mask references', () => {
@@ -133,4 +189,20 @@ test('rejects hierarchy cycles and missing mask references', () => {
   assert.equal(validation.ok, false);
   assert.ok(validation.errors.some((error) => error.includes('cycle')));
   assert.ok(validation.errors.some((error) => error.includes('invalid mask')));
+});
+
+test('rejects malformed warp keys and physics feedback loops', () => {
+  const model = fixture();
+  model.nodes.find((node) => node.id === 'warp')
+    .bindings.Turn.keyforms[0].state.warpOffsets = [0, 0];
+  model.physics = [{
+    id: 'loop',
+    inputs: [{ parameterId: 'Turn', weight: 1 }],
+    outputs: [{ parameterId: 'Turn', scale: 1 }],
+    settings: { stiffness: 20, damping: 4, mass: 1 }
+  }];
+  const validation = Core.validateModel(model);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((error) => error.includes('warp key offset count mismatch')));
+  assert.ok(validation.errors.some((error) => error.includes('feedback')));
 });

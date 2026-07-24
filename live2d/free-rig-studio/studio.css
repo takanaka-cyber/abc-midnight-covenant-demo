@@ -488,6 +488,28 @@ select {
   gap: 7px;
 }
 
+.physics-section {
+  border-top: 1px solid var(--line);
+}
+
+.physics-section > .button-row,
+#physicsInspector {
+  margin: 0 13px;
+}
+
+.physics-section > .button-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding-top: 11px;
+}
+
+#physicsInspector {
+  padding: 11px 0 4px;
+}
+
+#physicsEmpty {
+  padding: 12px 14px 0;
+}
+
 .divider {
   height: 1px;
   margin: 15px 0;

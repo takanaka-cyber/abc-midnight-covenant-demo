@@ -15,11 +15,15 @@
   var showMesh = true;
   var meshEditing = false;
   var draggedVertex = -1;
+  var warpEditing = false;
+  var draggedWarpPoint = -1;
   var idleEnabled = false;
+  var physicsEnabled = true;
+  var physicsRuntime = null;
+  var selectedPhysicsId = null;
   var lastFrame = performance.now();
   var frameCount = 0;
   var fpsStarted = lastFrame;
-  var bustSpring = { value: 0, velocity: 0 };
 
   function setStatus(message) {
     document.getElementById('statusText').textContent = message;
@@ -36,6 +40,77 @@
     while (used[id]) id = base + '_' + suffix++;
     used[id] = true;
     return id;
+  }
+
+  function hashString(value) {
+    var hash = 2166136261;
+    for (var index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function pathKey(path) {
+    return path.map(function (entry) {
+      return entry.name + '#' + entry.occurrence;
+    }).join('/');
+  }
+
+  function stablePathId(prefix, path) {
+    var label = path.length ? slug(path[path.length - 1].name) : 'root';
+    return prefix + '_' + label + '_' + hashString(pathKey(path));
+  }
+
+  function inspectPsdHierarchy(psd) {
+    var groups = [];
+    var leaves = [];
+
+    function walk(children, parentPath) {
+      var occurrences = {};
+      (children || []).forEach(function (child) {
+        var name = String(child.name || 'unnamed');
+        occurrences[name] = (occurrences[name] || 0) + 1;
+        var token = { name: name, occurrence: occurrences[name] };
+        var nextPath = parentPath.concat([token]);
+        if (child.children) {
+          groups.push({
+            id: stablePathId('source_group', nextPath),
+            name: name,
+            path: nextPath,
+            visible: child.hidden !== true,
+            opacity: child.opacity == null ? 1 : Number(child.opacity),
+            blendMode: child.blendMode || 'normal'
+          });
+          walk(child.children, nextPath);
+          return;
+        }
+        if (!child.imageData) return;
+        leaves.push({
+          id: stablePathId('source_layer', nextPath),
+          name: name,
+          path: nextPath,
+          groupPath: parentPath,
+          visible: child.hidden !== true,
+          layer: child
+        });
+      });
+    }
+
+    walk(psd.children || [], []);
+    return { groups: groups, leaves: leaves };
+  }
+
+  function flattenPsdForRigger(psd, hierarchy) {
+    var flatChildren = hierarchy.leaves.map(function (record) {
+      var layer = Object.assign({}, record.layer);
+      layer.__freeRigSourceId = record.id;
+      layer.__freeRigSourcePath = record.path;
+      layer.__freeRigGroupPath = record.groupPath;
+      layer.__freeRigVisible = record.visible;
+      return layer;
+    });
+    return Object.assign({}, psd, { children: flatChildren });
   }
 
   function imageDataToDataUrl(image) {
@@ -72,7 +147,7 @@
     };
   }
 
-  function createSampleModel(rig, sourceName) {
+  function createSampleModel(rig, sourceName, sourceHierarchy) {
     var usedIds = {};
     var textures = [];
     var nodes = [];
@@ -201,9 +276,55 @@
       }
     });
 
+    var sourceGroupsByDomain = {};
+    var sourceGroupMetadata = {};
+    (sourceHierarchy && sourceHierarchy.groups || []).forEach(function (group) {
+      sourceGroupMetadata[pathKey(group.path)] = group;
+    });
+
+    function ensureSourceGroupChain(groupPath, domainParentId) {
+      var currentParentId = domainParentId;
+      for (var index = 0; index < groupPath.length; index++) {
+        var currentPath = groupPath.slice(0, index + 1);
+        var key = domainParentId + '|' + pathKey(currentPath);
+        if (!sourceGroupsByDomain[key]) {
+          var sourceGroup = sourceGroupMetadata[pathKey(currentPath)] || {};
+          var sourceOpacity = sourceGroup.opacity == null ? 1 : Number(sourceGroup.opacity);
+          if (sourceOpacity > 1) sourceOpacity /= 255;
+          if (!Number.isFinite(sourceOpacity)) sourceOpacity = 1;
+          var groupId = stablePathId('group_' + slug(domainParentId), currentPath);
+          nodes.push({
+            id: groupId,
+            name: currentPath[currentPath.length - 1].name,
+            type: 'group',
+            parentId: currentParentId,
+            visible: sourceGroup.visible !== false,
+            source: {
+              kind: 'psd-group',
+              path: currentPath,
+              domainParentId: domainParentId,
+              blendMode: sourceGroup.blendMode || 'normal'
+            },
+            transform: {
+              x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1,
+              opacity: Core.clamp(sourceOpacity, 0, 1), drawOrder: 0
+            },
+            bindings: {}
+          });
+          sourceGroupsByDomain[key] = groupId;
+        }
+        currentParentId = sourceGroupsByDomain[key];
+      }
+      return currentParentId;
+    }
+
     rig.layers.forEach(function (layer, layerIndex) {
       var base = slug(layer.name);
-      var partId = uniqueId('part_' + base, usedIds);
+      var sourceSuffix = layer.side ? '_' + layer.side.toLowerCase() : '';
+      var partBase = layer.sourceId
+        ? 'part_' + layer.sourceId.replace(/^source_layer_/, '') + sourceSuffix
+        : 'part_' + base;
+      var partId = uniqueId(partBase, usedIds);
       var textureId = 'tex_' + partId;
       textures.push({
         id: textureId,
@@ -216,14 +337,21 @@
       var meshRows = Math.max(2, Math.min(6, Math.round(layer.h / 76)));
       var parentId = layer.group === 'head' ? 'head_warp' : 'body_warp';
       if (/^topwear/.test(base)) parentId = 'bust_warp';
+      parentId = ensureSourceGroupChain(layer.sourceGroupPath || [], parentId);
       var part = {
         id: partId,
         name: layer.name,
         type: 'part',
         parentId: parentId,
         textureId: textureId,
-        visible: true,
+        visible: layer.sourceVisible !== false,
         maskIds: [],
+        source: {
+          kind: 'psd-layer',
+          sourceId: layer.sourceId || null,
+          path: layer.sourcePath || [{ name: layer.name, occurrence: 1 }],
+          groupPath: layer.sourceGroupPath || []
+        },
         transform: {
           x: layer.x,
           y: layer.y,
@@ -256,6 +384,13 @@
       byOriginalName[layer.name] = part;
     });
 
+    (sourceHierarchy && sourceHierarchy.groups || []).forEach(function (group) {
+      var represented = Object.keys(sourceGroupsByDomain).some(function (key) {
+        return key.slice(key.indexOf('|') + 1) === pathKey(group.path);
+      });
+      if (!represented) ensureSourceGroupChain(group.path, 'body_warp');
+    });
+
     nodes.forEach(function (node) {
       if (node.type !== 'part' || node.name.indexOf('irides') !== 0) return;
       var suffix = /_l$/.test(node.name) ? '_l' : /_r$/.test(node.name) ? '_r' : '';
@@ -267,8 +402,12 @@
       version: Core.VERSION,
       meta: {
         name: sourceName || 'ABC Succubus sample',
-        generator: 'Free Rig Studio core P0',
-        source: 'PSD semantic layers'
+        generator: 'Free Rig Studio core P1',
+        source: 'PSD semantic layers',
+        sourceHierarchy: {
+          groups: sourceHierarchy ? sourceHierarchy.groups.length : 0,
+          layers: sourceHierarchy ? sourceHierarchy.leaves.length : rig.layers.length
+        }
       },
       canvas: { width: rig.canvas.w, height: rig.canvas.h },
       parameters: [
@@ -283,7 +422,15 @@
         { id: 'Bust', name: 'Bust spring', min: -1, max: 1, default: 0 }
       ],
       textures: textures,
-      nodes: nodes
+      nodes: nodes,
+      physics: [{
+        id: 'physics_bust',
+        name: 'Bust follow-through',
+        enabled: true,
+        inputs: [{ parameterId: 'Breath', center: 0, weight: 1 }],
+        outputs: [{ parameterId: 'Bust', scale: 0.55, offset: 0 }],
+        settings: { stiffness: 24, damping: 4.2, mass: 1 }
+      }]
     };
   }
 
@@ -471,16 +618,24 @@
       selectedId: selectedId,
       partCount: evaluated.parts.length,
       nodeCount: model.nodes.length,
+      sourceHierarchy: model.meta && model.meta.sourceHierarchy,
+      physics: {
+        enabled: physicsEnabled,
+        groups: (model.physics || []).length,
+        states: physicsRuntime ? physicsRuntime.getStates() : {}
+      },
       validation: Core.validateModel(model)
     };
   }
 
   function rebuildEvaluator() {
     evaluator = Core.createEvaluator(model);
+    physicsRuntime = Core.createPhysicsRuntime(model);
     evaluateAndRender();
     renderOutliner();
     renderValidation();
     updateStats();
+    renderPhysicsInspector();
   }
 
   async function setModel(nextModel) {
@@ -499,9 +654,12 @@
     setStatus('Textureを準備中…');
     await renderer.setModel(model);
     evaluator = Core.createEvaluator(model);
+    physicsRuntime = Core.createPhysicsRuntime(model);
+    selectedPhysicsId = model.physics && model.physics.length ? model.physics[0].id : null;
     renderParameters();
     renderOutliner();
     selectNode(selectedId);
+    renderPhysicsInspector();
     renderValidation();
     updateStats();
     evaluateAndRender();
@@ -515,9 +673,11 @@
       useImageData: true,
       skipThumbnail: true
     });
-    window.Rigger.cleanPsdLayers(psd);
-    var rig = window.Rigger.buildRig(psd, {});
-    var nextModel = createSampleModel(rig, name || 'Imported PSD');
+    var sourceHierarchy = inspectPsdHierarchy(psd);
+    var flattenedPsd = flattenPsdForRigger(psd, sourceHierarchy);
+    window.Rigger.cleanPsdLayers(flattenedPsd);
+    var rig = window.Rigger.buildRig(flattenedPsd, {});
+    var nextModel = createSampleModel(rig, name || 'Imported PSD', sourceHierarchy);
     await setModel(nextModel);
   }
 
@@ -526,7 +686,7 @@
       setStatus('ABCサンプルPSDを取得中…');
       var response = await fetch('../assets/abc_succubus_rig_v4.psd');
       if (!response.ok) throw new Error('sample PSD HTTP ' + response.status);
-      await loadPsdBuffer(await response.arrayBuffer(), 'ABC Succubus / Free Rig P0');
+      await loadPsdBuffer(await response.arrayBuffer(), 'ABC Succubus / Free Rig P1');
     } catch (error) {
       setStatus('読込失敗: ' + error.message);
       throw error;
@@ -549,7 +709,9 @@
         button.style.setProperty('--depth', depth);
         button.dataset.nodeId = node.id;
         button.setAttribute('role', 'treeitem');
-        var icon = node.type === 'part' ? '◆' : node.type === 'warp' ? '▦' : '◉';
+        var icon = node.type === 'part' ? '◆'
+          : node.type === 'warp' ? '▦'
+            : node.type === 'group' ? '▣' : '◉';
         button.innerHTML =
           '<span class="tree-icon">' + icon + '</span>' +
           '<span class="tree-name"></span>' +
@@ -602,8 +764,7 @@
       input.value = parameterValues[id];
       input.parentNode.querySelector('output').value = Number(input.value).toFixed(2);
     });
-    bustSpring.value = 0;
-    bustSpring.velocity = 0;
+    if (physicsRuntime) physicsRuntime.reset();
     refreshKeyInspector();
     evaluateAndRender();
   }
@@ -612,10 +773,13 @@
     if (!model) return;
     selectedId = id;
     meshEditing = false;
+    warpEditing = false;
+    draggedWarpPoint = -1;
     updateMeshButton();
+    updateWarpButton();
     renderOutliner();
     renderInspector();
-    drawOverlay();
+    evaluateAndRender();
   }
 
   function selectedNode() {
@@ -637,6 +801,7 @@
     document.getElementById('drawOrder').value = transform.drawOrder;
     document.getElementById('nodeVisible').checked = node.visible !== false;
     document.getElementById('maskField').hidden = node.type !== 'part';
+    document.getElementById('warpEditor').hidden = node.type !== 'warp';
 
     var parent = document.getElementById('parentId');
     parent.innerHTML = '<option value="">— root —</option>';
@@ -679,6 +844,131 @@
     }
   }
 
+  function selectedPhysicsGroup() {
+    return model && (model.physics || []).find(function (group) {
+      return group.id === selectedPhysicsId;
+    });
+  }
+
+  function fillParameterSelect(select, selectedParameterId) {
+    select.innerHTML = '';
+    (model.parameters || []).forEach(function (parameter) {
+      var option = document.createElement('option');
+      option.value = parameter.id;
+      option.textContent = parameter.name;
+      option.selected = parameter.id === selectedParameterId;
+      select.appendChild(option);
+    });
+  }
+
+  function renderPhysicsInspector() {
+    var select = document.getElementById('physicsGroup');
+    var empty = document.getElementById('physicsEmpty');
+    var inspector = document.getElementById('physicsInspector');
+    if (!model) {
+      select.innerHTML = '';
+      empty.hidden = false;
+      inspector.hidden = true;
+      return;
+    }
+    model.physics = model.physics || [];
+    if (!selectedPhysicsGroup()) {
+      selectedPhysicsId = model.physics.length ? model.physics[0].id : null;
+    }
+    select.innerHTML = '';
+    model.physics.forEach(function (group) {
+      var option = document.createElement('option');
+      option.value = group.id;
+      option.textContent = group.name;
+      option.selected = group.id === selectedPhysicsId;
+      select.appendChild(option);
+    });
+    document.getElementById('physicsCount').textContent = model.physics.length;
+    var group = selectedPhysicsGroup();
+    empty.hidden = Boolean(group);
+    inspector.hidden = !group;
+    if (!group) return;
+
+    var input = group.inputs[0];
+    var output = group.outputs[0];
+    var settings = group.settings || {};
+    document.getElementById('physicsName').value = group.name;
+    fillParameterSelect(document.getElementById('physicsInput'), input.parameterId);
+    fillParameterSelect(document.getElementById('physicsOutput'), output.parameterId);
+    document.getElementById('physicsCenter').value = input.center == null ? 0 : input.center;
+    document.getElementById('physicsWeight').value = input.weight == null ? 1 : input.weight;
+    document.getElementById('physicsScale').value = output.scale == null ? 1 : output.scale;
+    document.getElementById('physicsOffset').value = output.offset == null ? 0 : output.offset;
+    document.getElementById('physicsStiffness').value = settings.stiffness;
+    document.getElementById('physicsDamping').value = settings.damping;
+    document.getElementById('physicsMass').value = settings.mass == null ? 1 : settings.mass;
+    document.getElementById('physicsEnabled').checked = group.enabled !== false;
+  }
+
+  function addPhysicsGroup() {
+    if (!model || model.parameters.length < 2) {
+      setStatus('Physicsには2つ以上のParameterが必要です');
+      return;
+    }
+    var used = {};
+    (model.physics || []).forEach(function (group) { used[group.id] = true; });
+    var id = uniqueId('physics_group', used);
+    model.physics = model.physics || [];
+    model.physics.push({
+      id: id,
+      name: 'Physics group ' + (model.physics.length + 1),
+      enabled: true,
+      inputs: [{
+        parameterId: model.parameters[0].id,
+        center: model.parameters[0].default,
+        weight: 1
+      }],
+      outputs: [{
+        parameterId: model.parameters[1].id,
+        scale: 1,
+        offset: 0
+      }],
+      settings: { stiffness: 20, damping: 4, mass: 1 }
+    });
+    selectedPhysicsId = id;
+    rebuildEvaluator();
+    setStatus('Physics groupを追加');
+  }
+
+  function deletePhysicsGroup() {
+    if (!model || !selectedPhysicsGroup()) return;
+    var deletingId = selectedPhysicsId;
+    model.physics = model.physics.filter(function (group) { return group.id !== deletingId; });
+    selectedPhysicsId = model.physics.length ? model.physics[0].id : null;
+    rebuildEvaluator();
+    setStatus('Physics groupを削除');
+  }
+
+  function applyPhysicsInspector() {
+    var group = selectedPhysicsGroup();
+    if (!group) return;
+    var applied = safeMutation(function () {
+      group.name = document.getElementById('physicsName').value.trim() || group.id;
+      group.enabled = document.getElementById('physicsEnabled').checked;
+      group.inputs = [{
+        parameterId: document.getElementById('physicsInput').value,
+        center: Number(document.getElementById('physicsCenter').value),
+        weight: Number(document.getElementById('physicsWeight').value)
+      }];
+      group.outputs = [{
+        parameterId: document.getElementById('physicsOutput').value,
+        scale: Number(document.getElementById('physicsScale').value),
+        offset: Number(document.getElementById('physicsOffset').value)
+      }];
+      group.settings = {
+        stiffness: Number(document.getElementById('physicsStiffness').value),
+        damping: Number(document.getElementById('physicsDamping').value),
+        mass: Number(document.getElementById('physicsMass').value)
+      };
+    });
+    setStatus(applied ? 'Physics設定を反映' : 'Physics設定を反映できませんでした');
+  }
+
   function safeMutation(callback) {
     var backup = Core.importModel(Core.exportModel(model));
     callback();
@@ -686,7 +976,14 @@
     if (!validation.ok) {
       model = backup;
       alert(validation.errors.join('\n'));
+      evaluator = Core.createEvaluator(model);
+      physicsRuntime = Core.createPhysicsRuntime(model);
+      renderOutliner();
       renderInspector();
+      renderPhysicsInspector();
+      renderValidation();
+      updateStats();
+      evaluateAndRender();
       return false;
     }
     rebuildEvaluator();
@@ -829,6 +1126,11 @@
     var lines = errors.length ? errors : [
       'ID・親子循環・参照整合性: PASS',
       '全Parameter極値の頂点有限性: PASS',
+      'PSD source group: ' +
+        (model.meta && model.meta.sourceHierarchy ? model.meta.sourceHierarchy.groups : 0) +
+        ' / rig group node: ' +
+        model.nodes.filter(function (node) { return node.type === 'group'; }).length,
+      'Physics group: ' + (model.physics || []).length,
       '保存可能なschema v' + model.version
     ];
     lines.slice(0, 12).forEach(function (line) {
@@ -842,8 +1144,73 @@
     if (!model) return;
     var validation = Core.validateModel(model);
     var parts = model.nodes.filter(function (node) { return node.type === 'part'; }).length;
+    var groups = model.nodes.filter(function (node) { return node.type === 'group'; }).length;
     document.getElementById('runtimeStats').textContent =
-      'parts ' + parts + ' / params ' + model.parameters.length + ' / errors ' + validation.errors.length;
+      'parts ' + parts + ' / groups ' + groups +
+      ' / params ' + model.parameters.length +
+      ' / physics ' + (model.physics || []).length +
+      ' / errors ' + validation.errors.length;
+  }
+
+  function nodeById(id) {
+    return model && model.nodes.find(function (node) { return node.id === id; });
+  }
+
+  function invertWarpPoint(target, node, state) {
+    var point = { x: target.x, y: target.y };
+    for (var iteration = 0; iteration < 10; iteration++) {
+      var warped = Core.applyWarp(point, node, state);
+      point.x += target.x - warped.x;
+      point.y += target.y - warped.y;
+    }
+    return point;
+  }
+
+  function projectNodePoint(node, point) {
+    var projected = Core.transformPoint(
+      Core.matrixFromTransform(evaluated.statesById[node.id]),
+      point
+    );
+    var parent = node.parentId ? nodeById(node.parentId) : null;
+    while (parent) {
+      var parentState = evaluated.statesById[parent.id];
+      if (parent.type === 'warp') projected = Core.applyWarp(projected, parent, parentState);
+      projected = Core.transformPoint(Core.matrixFromTransform(parentState), projected);
+      parent = parent.parentId ? nodeById(parent.parentId) : null;
+    }
+    return projected;
+  }
+
+  function unprojectNodePoint(node, point) {
+    var chain = [];
+    var parent = node.parentId ? nodeById(node.parentId) : null;
+    while (parent) {
+      chain.push(parent);
+      parent = parent.parentId ? nodeById(parent.parentId) : null;
+    }
+    for (var index = chain.length - 1; index >= 0; index--) {
+      var parentNode = chain[index];
+      var parentState = evaluated.statesById[parentNode.id];
+      point = Core.transformPoint(
+        Core.invertMatrix(Core.matrixFromTransform(parentState)),
+        point
+      );
+      if (parentNode.type === 'warp') point = invertWarpPoint(point, parentNode, parentState);
+    }
+    return Core.transformPoint(
+      Core.invertMatrix(Core.matrixFromTransform(evaluated.statesById[node.id])),
+      point
+    );
+  }
+
+  function warpControlPoint(node, state, pointIndex) {
+    var columns = node.warp.columns;
+    var column = pointIndex % (columns + 1);
+    var row = Math.floor(pointIndex / (columns + 1));
+    return {
+      x: node.warp.x + node.warp.width * column / columns + state.warpOffsets[pointIndex * 2],
+      y: node.warp.y + node.warp.height * row / node.warp.rows + state.warpOffsets[pointIndex * 2 + 1]
+    };
   }
 
   function drawOverlay() {
@@ -876,22 +1243,6 @@
     } else if (node.type === 'warp') {
       var warp = node.warp;
       var state = evaluated.statesById[node.id];
-      function projectControlPoint(point) {
-        var projected = Core.transformPoint(Core.matrixFromTransform(state), point);
-        var parent = node.parentId
-          ? model.nodes.find(function (entry) { return entry.id === node.parentId; })
-          : null;
-        while (parent) {
-          var parentState = evaluated.statesById[parent.id];
-          if (parent.type === 'warp') projected = Core.applyWarp(projected, parent, parentState);
-          projected = Core.transformPoint(Core.matrixFromTransform(parentState), projected);
-          var parentId = parent.parentId;
-          parent = parentId
-            ? model.nodes.find(function (entry) { return entry.id === parentId; })
-            : null;
-        }
-        return projected;
-      }
       overlay.save();
       overlay.strokeStyle = 'rgba(209,164,91,.9)';
       overlay.fillStyle = 'rgba(209,164,91,.95)';
@@ -900,7 +1251,7 @@
         overlay.beginPath();
         for (var x = 0; x <= warp.columns; x++) {
           var index = (y * (warp.columns + 1) + x) * 2;
-          var point = projectControlPoint({
+          var point = projectNodePoint(node, {
             x: warp.x + warp.width * x / warp.columns + state.warpOffsets[index],
             y: warp.y + warp.height * y / warp.rows + state.warpOffsets[index + 1]
           });
@@ -912,7 +1263,7 @@
         overlay.beginPath();
         for (var row = 0; row <= warp.rows; row++) {
           var pointIndex = (row * (warp.columns + 1) + column) * 2;
-          var gridPoint = projectControlPoint({
+          var gridPoint = projectNodePoint(node, {
             x: warp.x + warp.width * column / warp.columns + state.warpOffsets[pointIndex],
             y: warp.y + warp.height * row / warp.rows + state.warpOffsets[pointIndex + 1]
           });
@@ -920,6 +1271,21 @@
           else overlay.lineTo(gridPoint.x, gridPoint.y);
         }
         overlay.stroke();
+      }
+      var controlPointCount = (warp.columns + 1) * (warp.rows + 1);
+      for (var controlIndex = 0; controlIndex < controlPointCount; controlIndex++) {
+        var controlPoint = projectNodePoint(node, warpControlPoint(node, state, controlIndex));
+        overlay.beginPath();
+        overlay.arc(
+          controlPoint.x,
+          controlPoint.y,
+          warpEditing ? 4.6 : 2.6,
+          0,
+          Math.PI * 2
+        );
+        overlay.fillStyle = controlIndex === draggedWarpPoint
+          ? 'rgba(88,208,201,1)' : 'rgba(209,164,91,.95)';
+        overlay.fill();
       }
       overlay.restore();
     }
@@ -942,6 +1308,16 @@
     badge.className = 'status ' + (meshEditing ? 'pass' : 'waiting');
   }
 
+  function updateWarpButton() {
+    var button = document.getElementById('warpEdit');
+    var badge = document.getElementById('warpState');
+    if (!button || !badge) return;
+    button.setAttribute('aria-pressed', warpEditing ? 'true' : 'false');
+    button.textContent = warpEditing ? 'Warp点編集を終了' : 'Warp点編集を開始';
+    badge.textContent = warpEditing ? 'ON' : 'OFF';
+    badge.className = 'status ' + (warpEditing ? 'pass' : 'waiting');
+  }
+
   function toggleMeshEditing() {
     var node = selectedNode();
     if (!node || node.type !== 'part') {
@@ -954,12 +1330,125 @@
     drawOverlay();
   }
 
-  overlayCanvas.addEventListener('pointerdown', function (event) {
-    if (!meshEditing || !evaluated) return;
+  function setParameterControl(parameterId, value) {
+    parameterValues[parameterId] = value;
+    var input = document.querySelector('input[data-parameter-id="' + parameterId + '"]');
+    if (input) {
+      input.value = value;
+      input.parentNode.querySelector('output').value = Number(value).toFixed(2);
+    }
+  }
+
+  function toggleWarpEditing() {
     var node = selectedNode();
+    var context = keyContext();
+    if (!node || node.type !== 'warp' || !context) {
+      setStatus('Warp編集はWarp nodeとParameterを選択してください');
+      return;
+    }
+    if (!warpEditing) {
+      var editingValue = context.value;
+      resetParameters();
+      setParameterControl(context.parameter.id, editingValue);
+      refreshKeyInspector();
+      meshEditing = false;
+      updateMeshButton();
+      showMesh = true;
+      document.getElementById('toggleMesh').classList.add('active');
+      document.getElementById('toggleMesh').setAttribute('aria-pressed', 'true');
+    }
+    warpEditing = !warpEditing;
+    draggedWarpPoint = -1;
+    updateWarpButton();
+    evaluateAndRender();
+  }
+
+  function updateWarpKeyPoint(node, pointIndex, localPoint) {
+    var context = keyContext();
+    if (!context) return;
+    var pointCount = (node.warp.columns + 1) * (node.warp.rows + 1);
+    var offsetLength = pointCount * 2;
+    node.warp.baseOffsets = Core.normalizedOffsets(node.warp.baseOffsets, offsetLength);
+    var column = pointIndex % (node.warp.columns + 1);
+    var row = Math.floor(pointIndex / (node.warp.columns + 1));
+    var basePoint = {
+      x: node.warp.x + node.warp.width * column / node.warp.columns,
+      y: node.warp.y + node.warp.height * row / node.warp.rows
+    };
+    var desiredOffset = [localPoint.x - basePoint.x, localPoint.y - basePoint.y];
+    var offsetIndex = pointIndex * 2;
+
+    if (Math.abs(context.value - context.parameter.default) < 0.00001) {
+      node.warp.baseOffsets[offsetIndex] = desiredOffset[0];
+      node.warp.baseOffsets[offsetIndex + 1] = desiredOffset[1];
+      return;
+    }
+
+    node.bindings = node.bindings || {};
+    var bindingValue = node.bindings[context.parameter.id];
+    if (!bindingValue) {
+      bindingValue = node.bindings[context.parameter.id] = {
+        interpolation: 'smooth',
+        keyforms: [{
+          value: context.parameter.default,
+          state: { warpOffsets: Core.createZeroOffsets(pointCount) }
+        }]
+      };
+    }
+    var neutralState = Core.sampleKeyforms(
+      bindingValue.keyforms,
+      context.parameter.default,
+      bindingValue.interpolation
+    );
+    var neutralOffsets = Core.normalizedOffsets(neutralState.warpOffsets, offsetLength);
+    var key = findKey(bindingValue, context.value);
+    if (!key) {
+      var sampled = Core.sampleKeyforms(
+        bindingValue.keyforms,
+        context.value,
+        bindingValue.interpolation
+      );
+      key = {
+        value: context.value,
+        state: {
+          warpOffsets: Core.normalizedOffsets(sampled.warpOffsets, offsetLength)
+        }
+      };
+      bindingValue.keyforms.push(key);
+      bindingValue.keyforms.sort(function (left, right) { return left.value - right.value; });
+    }
+    key.state.warpOffsets = Core.normalizedOffsets(key.state.warpOffsets, offsetLength);
+    key.state.warpOffsets[offsetIndex] =
+      desiredOffset[0] - node.warp.baseOffsets[offsetIndex] + neutralOffsets[offsetIndex];
+    key.state.warpOffsets[offsetIndex + 1] =
+      desiredOffset[1] - node.warp.baseOffsets[offsetIndex + 1] + neutralOffsets[offsetIndex + 1];
+  }
+
+  overlayCanvas.addEventListener('pointerdown', function (event) {
+    if ((!meshEditing && !warpEditing) || !evaluated) return;
+    var node = selectedNode();
+    var point = pointerToModel(event);
+    if (warpEditing && node.type === 'warp') {
+      var warpState = evaluated.statesById[node.id];
+      var pointCount = (node.warp.columns + 1) * (node.warp.rows + 1);
+      var bestWarpDistance = Infinity;
+      for (var pointIndex = 0; pointIndex < pointCount; pointIndex++) {
+        var projected = projectNodePoint(node, warpControlPoint(node, warpState, pointIndex));
+        var warpDistance = Math.hypot(projected.x - point.x, projected.y - point.y);
+        if (warpDistance < bestWarpDistance) {
+          bestWarpDistance = warpDistance;
+          draggedWarpPoint = pointIndex;
+        }
+      }
+      var warpThreshold = 16 * overlayCanvas.width / overlayCanvas.getBoundingClientRect().width;
+      if (bestWarpDistance > warpThreshold) draggedWarpPoint = -1;
+      if (draggedWarpPoint >= 0) overlayCanvas.setPointerCapture(event.pointerId);
+      drawOverlay();
+      return;
+    }
+    if (!meshEditing || node.type !== 'part') return;
     var part = evaluated.parts.find(function (entry) { return entry.id === node.id; });
     if (!part) return;
-    var point = pointerToModel(event);
     var bestDistance = Infinity;
     part.positions.forEach(function (candidate, index) {
       var distance = Math.hypot(candidate[0] - point.x, candidate[1] - point.y);
@@ -974,39 +1463,37 @@
   });
 
   overlayCanvas.addEventListener('pointermove', function (event) {
-    if (!meshEditing || draggedVertex < 0) return;
     var node = selectedNode();
     var point = pointerToModel(event);
-    var chain = [];
-    var current = node;
-    while (current) {
-      chain.push(current);
-      var parentId = current.parentId;
-      current = parentId
-        ? model.nodes.find(function (entry) { return entry.id === parentId; })
-        : null;
+    if (warpEditing && draggedWarpPoint >= 0 && node.type === 'warp') {
+      updateWarpKeyPoint(node, draggedWarpPoint, unprojectNodePoint(node, point));
+      evaluator = Core.createEvaluator(model);
+      evaluateAndRender();
+      return;
     }
-    for (var index = chain.length - 1; index >= 0; index--) {
-      var chainState = evaluated.statesById[chain[index].id];
-      point = Core.transformPoint(
-        Core.invertMatrix(Core.matrixFromTransform(chainState)),
-        point
-      );
-    }
+    if (!meshEditing || draggedVertex < 0 || node.type !== 'part') return;
+    point = unprojectNodePoint(node, point);
     node.mesh.vertices[draggedVertex] = [point.x, point.y];
     evaluator = Core.createEvaluator(model);
     evaluateAndRender();
   });
 
-  function finishVertexDrag() {
+  function finishPointDrag() {
     if (draggedVertex >= 0) {
       draggedVertex = -1;
       renderValidation();
       setStatus('Mesh頂点を更新');
     }
+    if (draggedWarpPoint >= 0) {
+      draggedWarpPoint = -1;
+      renderValidation();
+      refreshKeyInspector();
+      setStatus('Warp control pointを更新');
+      drawOverlay();
+    }
   }
-  overlayCanvas.addEventListener('pointerup', finishVertexDrag);
-  overlayCanvas.addEventListener('pointercancel', finishVertexDrag);
+  overlayCanvas.addEventListener('pointerup', finishPointDrag);
+  overlayCanvas.addEventListener('pointercancel', finishPointDrag);
 
   function saveJson() {
     if (!model) return;
@@ -1036,18 +1523,25 @@
     }
     var dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
-    if (!idleEnabled || !model) return;
-    var time = now / 1000;
-    parameterValues.AngleX = Math.sin(time * 0.52) * 0.22;
-    parameterValues.AngleY = Math.sin(time * 0.37 + 0.8) * 0.12;
-    parameterValues.AngleZ = Math.sin(time * 0.31 + 1.4) * 0.18;
-    parameterValues.BodyAngle = Math.sin(time * 0.24) * 0.2;
-    parameterValues.Breath = 0.5 + Math.sin(time * Math.PI * 2 / 3.6) * 0.5;
-    var target = Math.sin(time * Math.PI * 2 / 3.6) * 0.36 + parameterValues.BodyAngle * 0.3;
-    var acceleration = -24 * (bustSpring.value - target) - 4.2 * bustSpring.velocity;
-    bustSpring.velocity += acceleration * dt;
-    bustSpring.value += bustSpring.velocity * dt;
-    parameterValues.Bust = Core.clamp(bustSpring.value, -1, 1);
+    if (!model) return;
+    var changed = false;
+    if (idleEnabled) {
+      var time = now / 1000;
+      parameterValues.AngleX = Math.sin(time * 0.52) * 0.22;
+      parameterValues.AngleY = Math.sin(time * 0.37 + 0.8) * 0.12;
+      parameterValues.AngleZ = Math.sin(time * 0.31 + 1.4) * 0.18;
+      parameterValues.BodyAngle = Math.sin(time * 0.24) * 0.2;
+      parameterValues.Breath = 0.5 + Math.sin(time * Math.PI * 2 / 3.6) * 0.5;
+      changed = true;
+    }
+    if (physicsEnabled && physicsRuntime) {
+      var physicsOutputs = physicsRuntime.step(parameterValues, dt);
+      Object.keys(physicsOutputs).forEach(function (parameterId) {
+        parameterValues[parameterId] = physicsOutputs[parameterId];
+        changed = true;
+      });
+    }
+    if (!changed) return;
     document.querySelectorAll('.parameter input').forEach(function (input) {
       var id = input.dataset.parameterId;
       if (parameterValues[id] == null) return;
@@ -1067,6 +1561,12 @@
   });
   document.getElementById('saveJson').addEventListener('click', saveJson);
   document.getElementById('resetParameters').addEventListener('click', resetParameters);
+  document.getElementById('togglePhysics').addEventListener('click', function () {
+    physicsEnabled = !physicsEnabled;
+    this.setAttribute('aria-pressed', physicsEnabled ? 'true' : 'false');
+    this.textContent = physicsEnabled ? 'Physics ON' : 'Physics OFF';
+    if (!physicsEnabled) resetParameters();
+  });
   document.getElementById('toggleIdle').addEventListener('click', function () {
     idleEnabled = !idleEnabled;
     this.setAttribute('aria-pressed', idleEnabled ? 'true' : 'false');
@@ -1103,6 +1603,14 @@
   document.getElementById('saveKey').addEventListener('click', saveCurrentKey);
   document.getElementById('deleteKey').addEventListener('click', deleteCurrentKey);
   document.getElementById('meshEdit').addEventListener('click', toggleMeshEditing);
+  document.getElementById('warpEdit').addEventListener('click', toggleWarpEditing);
+  document.getElementById('physicsGroup').addEventListener('change', function () {
+    selectedPhysicsId = this.value;
+    renderPhysicsInspector();
+  });
+  document.getElementById('addPhysics').addEventListener('click', addPhysicsGroup);
+  document.getElementById('deletePhysics').addEventListener('click', deletePhysicsGroup);
+  document.getElementById('applyPhysics').addEventListener('click', applyPhysicsInspector);
 
   try {
     renderer = new RigRenderer(renderCanvas);
@@ -1115,9 +1623,15 @@
 
   window.__freeRigStudio = {
     loadSample: loadSample,
+    loadPsdBuffer: loadPsdBuffer,
+    inspectPsdHierarchy: inspectPsdHierarchy,
     setParameter: function (id, value) {
       parameterValues[id] = value;
       evaluateAndRender();
+    },
+    setPhysicsEnabled: function (value) {
+      physicsEnabled = Boolean(value);
+      if (!physicsEnabled && physicsRuntime) physicsRuntime.reset();
     },
     selectNode: selectNode,
     exportModel: function () { return model ? Core.exportModel(model) : null; },

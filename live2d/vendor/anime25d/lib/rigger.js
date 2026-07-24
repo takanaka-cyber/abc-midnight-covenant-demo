@@ -369,6 +369,10 @@
       name: name, x: x0, y: y0, w: w, h: h, z: z,
       depth: slot.depth, group: slot.group, phys: slot.phys || null,
       fade: slot.fade || null, side: side || null, strands: strands || null,
+      sourceId: layer.__freeRigSourceId || null,
+      sourcePath: layer.__freeRigSourcePath || null,
+      sourceGroupPath: layer.__freeRigGroupPath || null,
+      sourceVisible: layer.__freeRigVisible !== false,
       img: { width: w, height: h, data: data }
     };
   }

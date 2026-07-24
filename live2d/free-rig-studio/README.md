@@ -1,4 +1,4 @@
-# Free Rig Studio — core P0
+# Free Rig Studio — core P1
 
 Live2D Cubismの公開機能を棚卸しした上で、キャラクター品質に直結する
 データ構造だけをブラウザ上へ再構成する検証実装。
@@ -19,6 +19,11 @@ Live2Dの独自ファイルを解析・互換実装するものではない。
 - JSON保存・再読込
 - NeutralでのMesh頂点編集
 - PSDからのParts・Texture生成
+- PSD group hierarchyの保持
+- source path由来の安定node ID
+- Warp control pointの直接編集とParameter別Keyform保存
+- 任意Parameter間を接続するspring Physics group
+- Physics groupの追加・削除・設定UI
 - 全Parameter極値での有限頂点監査
 
 ## 起動
@@ -41,10 +46,10 @@ http://127.0.0.1:4173/live2d/free-rig-studio/
 node --test live2d/free-rig-studio/tests/core.test.mjs
 ```
 
-## 未実装
+## 現在の制限 / 未実装
 
-- PSD groupの完全保持と再import差分
-- Warp control pointのGUI編集
+- 同一PSD再import時の既存編集内容の自動merge
+- Physics UIでの複数input / output行編集
 - 複数Parameterの2D格子補間
 - Glue / Skinning / ArtPath
 - 汎用Physics group authoring UI

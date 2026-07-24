@@ -119,6 +119,13 @@
     return result;
   }
 
+  function normalizedOffsets(source, length) {
+    var result = new Array(length);
+    source = source || [];
+    for (var index = 0; index < length; index++) result[index] = Number(source[index] || 0);
+    return result;
+  }
+
   function interpolateArray(a, b, t, length) {
     var result = new Array(length);
     for (var index = 0; index < length; index++) {
@@ -180,7 +187,10 @@
   function evaluateNodeState(node, parametersById, values) {
     var state = identityTransform(node.transform);
     state.warpOffsets = node.type === 'warp'
-      ? createZeroOffsets((node.warp.columns + 1) * (node.warp.rows + 1))
+      ? normalizedOffsets(
+        node.warp.baseOffsets,
+        (node.warp.columns + 1) * (node.warp.rows + 1) * 2
+      )
       : [];
     state.meshOffsets = node.type === 'part'
       ? createZeroOffsets(node.mesh.vertices.length)
@@ -276,7 +286,7 @@
       if (!node.id) errors.push('node id is required');
       else if (nodesById[node.id]) errors.push('duplicate node id: ' + node.id);
       else nodesById[node.id] = node;
-      if (['rotation', 'warp', 'part'].indexOf(node.type) < 0) {
+      if (['group', 'rotation', 'warp', 'part'].indexOf(node.type) < 0) {
         errors.push('unsupported node type: ' + node.type);
       }
     });
@@ -286,6 +296,24 @@
       if (node.parentId && !nodesById[node.parentId]) errors.push('missing parent: ' + node.parentId);
       Object.keys(node.bindings || {}).forEach(function (parameterId) {
         if (!parametersById[parameterId]) errors.push('unknown binding parameter: ' + parameterId);
+        var binding = node.bindings[parameterId];
+        if (!binding || !Array.isArray(binding.keyforms)) {
+          errors.push('binding keyforms are required: ' + id + ' / ' + parameterId);
+          return;
+        }
+        binding.keyforms.forEach(function (keyform) {
+          if (!Number.isFinite(Number(keyform.value))) {
+            errors.push('keyform value must be finite: ' + id + ' / ' + parameterId);
+          }
+          var state = keyform.state || {};
+          ['warpOffsets', 'meshOffsets'].forEach(function (key) {
+            if (state[key] && state[key].some(function (value) {
+              return !Number.isFinite(Number(value));
+            })) {
+              errors.push('keyform offsets must be finite: ' + id + ' / ' + parameterId);
+            }
+          });
+        });
       });
       if (node.type === 'part') {
         if (!node.mesh || !node.mesh.vertices || !node.mesh.uvs || !node.mesh.triangles) {
@@ -313,7 +341,62 @@
         if (!node.warp || !(node.warp.columns > 0) || !(node.warp.rows > 0) ||
             !(node.warp.width > 0) || !(node.warp.height > 0)) {
           errors.push('warp definition is incomplete: ' + id);
+        } else {
+          var warpLength = (node.warp.columns + 1) * (node.warp.rows + 1) * 2;
+          if (node.warp.baseOffsets && node.warp.baseOffsets.length !== warpLength) {
+            errors.push('warp base offset count mismatch: ' + id);
+          }
+          Object.keys(node.bindings || {}).forEach(function (parameterId) {
+            node.bindings[parameterId].keyforms.forEach(function (keyform) {
+              if (keyform.state && keyform.state.warpOffsets &&
+                  keyform.state.warpOffsets.length !== warpLength) {
+                errors.push('warp key offset count mismatch: ' + id + ' / ' + parameterId);
+              }
+            });
+          });
         }
+      }
+    });
+
+    var physicsById = {};
+    (model.physics || []).forEach(function (group) {
+      if (!group.id) errors.push('physics group id is required');
+      else if (physicsById[group.id]) errors.push('duplicate physics group id: ' + group.id);
+      else physicsById[group.id] = group;
+      if (!group.inputs || !group.inputs.length) errors.push('physics input is required: ' + group.id);
+      if (!group.outputs || !group.outputs.length) errors.push('physics output is required: ' + group.id);
+      (group.inputs || []).forEach(function (input) {
+        if (!parametersById[input.parameterId]) {
+          errors.push('unknown physics input parameter: ' + input.parameterId);
+        }
+        if (input.weight != null && !Number.isFinite(Number(input.weight))) {
+          errors.push('physics input weight must be finite: ' + group.id);
+        }
+        if (input.center != null && !Number.isFinite(Number(input.center))) {
+          errors.push('physics input center must be finite: ' + group.id);
+        }
+      });
+      (group.outputs || []).forEach(function (output) {
+        if (!parametersById[output.parameterId]) {
+          errors.push('unknown physics output parameter: ' + output.parameterId);
+        }
+        if ((group.inputs || []).some(function (input) {
+          return input.parameterId === output.parameterId;
+        })) {
+          errors.push('physics input/output feedback is unsupported: ' + group.id);
+        }
+        if (output.scale != null && !Number.isFinite(Number(output.scale))) {
+          errors.push('physics output scale must be finite: ' + group.id);
+        }
+        if (output.offset != null && !Number.isFinite(Number(output.offset))) {
+          errors.push('physics output offset must be finite: ' + group.id);
+        }
+      });
+      var settings = group.settings || {};
+      if (!(Number(settings.stiffness) > 0)) errors.push('physics stiffness must be positive: ' + group.id);
+      if (!(Number(settings.damping) >= 0)) errors.push('physics damping must be non-negative: ' + group.id);
+      if (!(settings.mass == null || Number(settings.mass) > 0)) {
+        errors.push('physics mass must be positive: ' + group.id);
       }
     });
 
@@ -359,12 +442,14 @@
           };
           point = transformPoint(matrixFromTransform(state), point);
           var opacity = state.opacity;
+          var visible = part.visible !== false;
           var parent = part.parentId ? nodesById[part.parentId] : null;
           while (parent) {
             var parentState = statesById[parent.id];
             if (parent.type === 'warp') point = applyWarp(point, parent, parentState);
             point = transformPoint(matrixFromTransform(parentState), point);
             opacity *= parentState.opacity;
+            visible = visible && parent.visible !== false;
             parent = parent.parentId ? nodesById[parent.parentId] : null;
           }
           positions.push([point.x, point.y]);
@@ -380,7 +465,7 @@
           maskIds: (part.maskIds || []).slice(),
           opacity: state.worldOpacity == null ? state.opacity : state.worldOpacity,
           drawOrder: state.drawOrder,
-          visible: part.visible !== false
+          visible: visible
         };
       }
 
@@ -414,6 +499,75 @@
     return model;
   }
 
+  function createPhysicsRuntime(model) {
+    var validation = validateModel(model);
+    if (!validation.ok) throw new Error(validation.errors.join('\n'));
+    var parametersById = {};
+    var states = {};
+    model.parameters.forEach(function (parameter) {
+      parametersById[parameter.id] = parameter;
+    });
+    (model.physics || []).forEach(function (group) {
+      states[group.id] = { value: 0, velocity: 0 };
+    });
+
+    function reset() {
+      Object.keys(states).forEach(function (id) {
+        states[id].value = 0;
+        states[id].velocity = 0;
+      });
+    }
+
+    function step(values, deltaTime) {
+      var dt = clamp(Number(deltaTime) || 0, 0, 0.05);
+      var contributions = {};
+      (model.physics || []).forEach(function (group) {
+        if (group.enabled === false) return;
+        var settings = group.settings || {};
+        var stiffness = Number(settings.stiffness);
+        var damping = Number(settings.damping);
+        var mass = settings.mass == null ? 1 : Number(settings.mass);
+        var target = 0;
+        group.inputs.forEach(function (input) {
+          var parameter = parametersById[input.parameterId];
+          var value = values[input.parameterId] == null
+            ? parameter.default : Number(values[input.parameterId]);
+          var center = input.center == null ? parameter.default : Number(input.center);
+          var weight = input.weight == null ? 1 : Number(input.weight);
+          target += (value - center) * weight;
+        });
+        var state = states[group.id];
+        var acceleration = (stiffness * (target - state.value) - damping * state.velocity) / mass;
+        state.velocity += acceleration * dt;
+        state.value += state.velocity * dt;
+        group.outputs.forEach(function (output) {
+          var parameter = parametersById[output.parameterId];
+          var scale = output.scale == null ? 1 : Number(output.scale);
+          var offset = output.offset == null ? 0 : Number(output.offset);
+          if (contributions[output.parameterId] == null) {
+            contributions[output.parameterId] = parameter.default;
+          }
+          contributions[output.parameterId] += state.value * scale + offset;
+        });
+      });
+      Object.keys(contributions).forEach(function (parameterId) {
+        var parameter = parametersById[parameterId];
+        contributions[parameterId] = clamp(
+          contributions[parameterId],
+          parameter.min,
+          parameter.max
+        );
+      });
+      return contributions;
+    }
+
+    return {
+      step: step,
+      reset: reset,
+      getStates: function () { return deepClone(states); }
+    };
+  }
+
   return {
     VERSION: VERSION,
     clamp: clamp,
@@ -425,10 +579,12 @@
     transformPoint: transformPoint,
     createRectMesh: createRectMesh,
     createZeroOffsets: createZeroOffsets,
+    normalizedOffsets: normalizedOffsets,
     sampleKeyforms: sampleKeyforms,
     applyWarp: applyWarp,
     validateModel: validateModel,
     createEvaluator: createEvaluator,
+    createPhysicsRuntime: createPhysicsRuntime,
     exportModel: exportModel,
     importModel: importModel
   };
