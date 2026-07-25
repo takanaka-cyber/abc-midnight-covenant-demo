@@ -12,7 +12,7 @@
     serious: "assets/character/succubus_STANDEE_live2d_v4.webp",
     concerned: "assets/character/succubus_STANDEE_live2d_v4.webp",
     alluring: "assets/character/succubus_STANDEE_live2d_v4.webp",
-    bustEmphasis: "assets/character/succubus_EVENT_bust_press_v2.png",
+    bustEmphasis: "assets/character/succubus_EVENT_bust_press_v2_upper.png",
   };
 
   Object.values(ASSETS).forEach((src) => {

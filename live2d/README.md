@@ -21,7 +21,7 @@
 - 分解スクリプト: `tools/segment_approved_v6.py`、`tools/build_exact_head_v6.py`、`tools/build_exact_character_v6.py`
 - PSD生成: `tools/write_psd_v6.js`
 - 静止フォールバック: `../assets/character/succubus_STANDEE_live2d_v4.webp`
-- 最終設問イベント差分: `../assets/character/succubus_EVENT_bust_press_v2.png`
+- 最終設問イベント差分: `../assets/character/succubus_EVENT_bust_press_v2_upper.png`
 - 撃破後ご褒美差分: `../assets/character/succubus_REWARD_final_v1.png`
 - BGM: `../assets/audio/midnight-covenant-bgm-v1.mp3`
 - ご褒美CTA: `../assets/ui/cta-reward-v1.webp`
@@ -131,7 +131,7 @@ Cubism標準IDがないため、
 - 375×812: 横overflow 0、発話3口形、誘惑表情・全身ジェスチャーを実画面確認
 - 375×812実測: 約119.8fps、frame interval p95 9.9ms、最大10.4ms
 - `BustSqueeze`: 5×3局所Warpの外周頂点を固定し、中央だけを持ち上げつつ左右内側へ寄せる
-- Q4イベント差分: 880×1768 RGBA、暗背景375×812で顔・押し上げた胸元・両手を上半身クロップ表示
+- Q4イベント差分: 新規880×1768生成後、破綻のない顔・押し上げた胸元・両手だけを620×800 RGBAへ正本化
 - Q4イベント復帰: 3秒後に通常リグへ戻り、誘惑ジェスチャーを継続
 - 好感度画面: 375×812実測で選択後から非表示まで2573ms、`+1`と蓄積ハートを視認
 - 撃破後: 880×1768 RGBAの別構図CGで停止し、画像CTA後だけ相談メモへ遷移
