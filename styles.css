@@ -1413,6 +1413,7 @@ a:focus-visible {
 
 .reward-button {
   width: min(100%, 390px);
+  margin-inline: auto;
 }
 
 .reward-screen.is-active .reward-screen__art {
