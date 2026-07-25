@@ -12,7 +12,7 @@
 
 このPoCは公式Live2D Cubism形式ではない。1枚絵をパーツ分けし、WebGLメッシュとスプリング物理でLive2D風に動かす方式を採る。
 
-## 現在の実装（v12 event-pose performance）
+## 現在の実装（v13 reward-flow performance）
 
 - ユーザー採用元絵: `source/abc_succubus_live2d_master_v5_user_approved.png`
 - 透過・デスピル元絵: `source/abc_succubus_live2d_master_v5.png`
@@ -21,14 +21,17 @@
 - 分解スクリプト: `tools/segment_approved_v6.py`、`tools/build_exact_head_v6.py`、`tools/build_exact_character_v6.py`
 - PSD生成: `tools/write_psd_v6.js`
 - 静止フォールバック: `../assets/character/succubus_STANDEE_live2d_v4.webp`
-- 最終設問イベント差分: `../assets/character/succubus_EVENT_bust_emphasis_v1.png`
+- 最終設問イベント差分: `../assets/character/succubus_EVENT_bust_press_v2.png`
+- 撃破後ご褒美差分: `../assets/character/succubus_REWARD_final_v1.png`
+- BGM: `../assets/audio/midnight-covenant-bgm-v1.mp3`
+- ご褒美CTA: `../assets/ui/cta-reward-v1.webp`
 - 埋め込みプレイヤー: `free-rig-studio/?embed=1`
 - LP接続: 質問画面の静止画を残したまま、リグ準備完了後だけiframeへクロスフェード
 - 失敗時: 静止画を継続表示
 - `prefers-reduced-motion`: iframeを非表示にして静止画へ固定
 - upstream license: `vendor/anime25d/LICENSE`
 
-v12のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩、腰、左右脚、
+v13のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩、腰、左右脚、
 髪、左右翼、尾、左右外套、両腕、呼吸、胸部局所スプリングを独立して駆動する。
 全身Warpを親に、上半身・腰・頭・肩・翼根・外套根・尾根・脚根を子へ置き、
 柔軟部は高密度Meshと複数BoneのSkinningで位相差を作る。
@@ -36,10 +39,15 @@ v12のFree Rig Studioは、まばたき、口差分、頭部XY/Z、胸郭、肩�
 一回性の頷き・誘導ジェスチャーをLPの会話状態から駆動する。会話中は視線・頭・
 肩・腰・腕を連動させ、誘導ジェスチャーでは物理演算後に翼・尾・外套の演技を
 加算することで、物理出力によるモーション消失を防ぐ。
-最終設問は局所Warpだけに依存せず、ローカルQwen Image Editで生成した
-「両腕を内側へ寄せ、両手を胸元へ置く」専用イベント差分を3秒表示する。
+最終設問は局所Warpだけに依存せず、ローカルQwen Image Editで新規生成した
+「両手で胸を下外側から中央・上方向へ押し上げる」専用イベント差分を3秒表示する。
 イベント差分の終了後は通常リグへ戻り、`BustSqueeze`、両腕、胸部スプリング、
 翼・尾・外套を連動させた誘惑ジェスチャーを継続する。
+最終戦の撃破後は相談メモへ自動遷移しない。別構図で新規生成した前傾・低視点の
+ご褒美CGを表示して停止し、画像CTAを押した時だけ相談メモへ進む。
+各回答後は好感度上昇画面を約2.1秒保持し、`LILITH AFFECTION +1`と4段階ハートを
+表示する。BGMはfal.ai `fal-ai/ace-step`で新規生成した歌なし60秒音源を、
+先頭・末尾2秒のクロスフェードとラウドネス調整後、58秒ループとして再生する。
 発話口は元PSDの`mouth_open` / `mouth_close`差分を主に使い、口パーツ全体の拡縮を
 行わない。口形Warpは小振幅へ制限し、通常・笑顔・誘惑表情の連続フレームで
 顔の輪郭とパーツ位置が崩れないことを確認する。
@@ -109,7 +117,7 @@ Cubism標準IDがないため、
 4. まばたき、呼吸、髪・衣装、胸の順に単体検証
 5. LPへ組み込み、静止フォールバックと負荷を検証
 
-## v12ローカルQA
+## v13ローカルQA
 
 - PSD: 887×1774、35レイヤー、readback成功
 - 可視RGB再合成: 欠損 `0px`、余分 `0px`、RGB最大誤差 `0`
@@ -123,8 +131,15 @@ Cubism標準IDがないため、
 - 375×812: 横overflow 0、発話3口形、誘惑表情・全身ジェスチャーを実画面確認
 - 375×812実測: 約119.8fps、frame interval p95 9.9ms、最大10.4ms
 - `BustSqueeze`: 5×3局所Warpの外周頂点を固定し、中央だけを持ち上げつつ左右内側へ寄せる
-- Q4イベント差分: 880×1768 RGBA、透過角4点、暗背景375×812で顔・胸元・両手を上半身クロップ表示
+- Q4イベント差分: 880×1768 RGBA、暗背景375×812で顔・押し上げた胸元・両手を上半身クロップ表示
 - Q4イベント復帰: 3秒後に通常リグへ戻り、誘惑ジェスチャーを継続
+- 好感度画面: 375×812実測で選択後から非表示まで2573ms、`+1`と蓄積ハートを視認
+- 撃破後: 880×1768 RGBAの別構図CGで停止し、画像CTA後だけ相談メモへ遷移
+- 320×568: ご褒美CG・コピー・画像CTAの横overflow 0
+- BGM: MP3 / stereo / 48kHz / 58秒、再生中`paused=false`、volume 0.18、readyState 4
+- BGM実測: integrated -20.9 LUFS / LRA 7.1 LU / true peak -2.9 dBFS
+- サウンドUI: OFF/ONとも`♫`固定、X・取消線なし、ONは発光と`aria-pressed=true`
+- ブラウザconsole: errors 0 / warnings 0
 - 自動テスト: 25件全件PASS
 
 継ぎ目QA証跡は `output/playwright/v26-overlap-neutral-887.png`、
@@ -149,5 +164,12 @@ Cubism標準IDがないため、
 `output/playwright/v34-event-pose-magenta.png`、
 `output/playwright/v34-event-cut-in-cropped-375x812.png`、
 `output/playwright/v34-event-return-cropped-375x812.png`。
+v13の好感度・Q4・最終報酬・BGM UIのQAは
+`output/playwright/v35-affection-early-375x812.png`、
+`output/playwright/v35-q4-bust-reward-375x812.png`、
+`output/playwright/v35-final-reward-screen-fixed-375x812.png`、
+`output/playwright/v35-final-reward-320x568.png`、
+`output/playwright/v35-sound-ui-375x812.png`、
+`output/playwright/v35-result-after-reward-375x812.png`。
 
 未完了: 実機での人間による動き評価と、承認後のPages/main反映。

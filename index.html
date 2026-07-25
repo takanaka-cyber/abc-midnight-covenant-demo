@@ -82,7 +82,7 @@
           type="button"
           aria-label="サウンドをオンにする"
           aria-pressed="false"
-        >♪̸</button>
+        >♫</button>
       </header>
 
       <div class="stage" id="stage">
@@ -115,7 +115,7 @@
         <img
           class="stage__event-pose"
           id="eventPose"
-          src="assets/character/succubus_EVENT_bust_emphasis_v1.png"
+          src="assets/character/succubus_EVENT_bust_press_v2.png"
           alt=""
           width="880"
           height="1768"
@@ -141,6 +141,14 @@
       <div class="chapter-gate__seal"></div>
       <p class="chapter-gate__kicker" id="chapterGateKicker">SEAL I</p>
       <h2 id="chapterGateTitle">秘密の輪郭</h2>
+      <div class="chapter-gate__affection" aria-label="リリスの好感度が1上昇">
+        <span class="chapter-gate__heart">♥</span>
+        <div>
+          <small>LILITH AFFECTION</small>
+          <strong>+1</strong>
+        </div>
+      </div>
+      <div class="chapter-gate__hearts" id="affectionHearts" aria-hidden="true"></div>
       <p class="chapter-gate__status" id="chapterGateStatus">CONTRACT UPDATED</p>
     </section>
 
@@ -199,6 +207,35 @@
       </button>
     </section>
 
+    <section class="reward-screen" id="rewardScreen" aria-hidden="true">
+      <img
+        class="reward-screen__art"
+        src="assets/character/succubus_REWARD_final_v1.png"
+        alt="迷いの影を倒したあと、こちらへ身を寄せるリリス"
+        width="880"
+        height="1768"
+      >
+      <div class="reward-screen__veil"></div>
+      <div class="reward-screen__content">
+        <p class="eyebrow">FINAL REWARD / LILITH ROUTE</p>
+        <h2>よくできました。<br><em>これは、あなたへのご褒美。</em></h2>
+        <p>最後まで本音を聞かせてくれたから、<br>今度は私が、もう少し近くへ行く番ね。</p>
+        <button
+          class="reward-button image-cta"
+          id="rewardButton"
+          type="button"
+          aria-label="契約報酬を受け取る"
+        >
+          <img
+            src="assets/ui/cta-reward-v1.webp"
+            alt=""
+            width="1600"
+            height="640"
+          >
+        </button>
+      </div>
+    </section>
+
     <section class="result-screen" id="resultScreen" aria-hidden="true">
       <img
         class="result-screen__frame"
@@ -250,6 +287,12 @@
     <div class="flash" id="flash" aria-hidden="true"></div>
   </main>
 
+  <audio
+    id="bgm"
+    src="assets/audio/midnight-covenant-bgm-v1.mp3"
+    preload="auto"
+    loop
+  ></audio>
   <script src="app.js"></script>
 </body>
 </html>

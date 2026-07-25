@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="1768" viewBox="0 0 880 1768">
+  <rect width="880" height="1768" fill="#08fbff"/>
+  <g fill="none" stroke="#172032" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="440" cy="245" r="120" fill="#f4c8b5"/>
+    <path d="M356 350 Q440 315 524 350 L590 720 Q440 810 290 720 Z" fill="#8b294f"/>
+    <path d="M352 405 Q275 445 245 565 Q255 655 345 640"/>
+    <path d="M528 405 Q605 445 635 565 Q625 655 535 640"/>
+    <path d="M245 565 Q298 610 374 548"/>
+    <path d="M635 565 Q582 610 506 548"/>
+    <ellipse cx="380" cy="505" rx="92" ry="112" fill="#f4c8b5"/>
+    <ellipse cx="500" cy="505" rx="92" ry="112" fill="#f4c8b5"/>
+    <path d="M374 548 Q408 516 430 555" stroke="#ff427f"/>
+    <path d="M506 548 Q472 516 450 555" stroke="#ff427f"/>
+    <path d="M295 720 L320 1380"/>
+    <path d="M585 720 L560 1380"/>
+    <path d="M320 1380 L280 1600"/>
+    <path d="M560 1380 L600 1600"/>
+  </g>
+  <g fill="#fff" font-family="Arial" font-size="28" font-weight="700">
+    <text x="56" y="70">FRONT VIEW / BOTH PALMS PRESS FROM OUTSIDE + BELOW</text>
+    <text x="210" y="860">FULL BODY — CHEST AND HANDS MUST BE CLEAR</text>
+  </g>
+</svg>

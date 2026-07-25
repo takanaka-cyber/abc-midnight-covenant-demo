@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="1768" viewBox="0 0 880 1768">
+  <rect width="880" height="1768" fill="#08fbff"/>
+  <g fill="none" stroke="#172032" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="440" cy="300" rx="150" ry="132" fill="#f4c8b5"/>
+    <path d="M295 438 Q440 375 585 438 L700 1040 Q440 1160 180 1040 Z" fill="#8b294f"/>
+    <ellipse cx="375" cy="570" rx="126" ry="160" fill="#f4c8b5"/>
+    <ellipse cx="505" cy="570" rx="126" ry="160" fill="#f4c8b5"/>
+    <path d="M255 475 Q120 610 80 980"/>
+    <path d="M625 475 Q760 610 800 980"/>
+    <circle cx="80" cy="1015" r="45" fill="#f4c8b5"/>
+    <circle cx="800" cy="1015" r="45" fill="#f4c8b5"/>
+    <path d="M285 445 Q190 330 125 205"/>
+    <path d="M595 445 Q690 330 755 205"/>
+    <path d="M305 1020 L300 1640"/>
+    <path d="M575 1020 L580 1640"/>
+  </g>
+  <g fill="#fff" font-family="Arial" font-size="28" font-weight="700">
+    <text x="72" y="70">LOW VIEW / LEANING TOWARD CAMERA / ARMS BRACED WIDE</text>
+    <text x="102" y="1160">CHEST FORWARD — NO HANDS OR HAIR OVER CHEST</text>
+  </g>
+</svg>

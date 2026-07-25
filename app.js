@@ -12,7 +12,7 @@
     serious: "assets/character/succubus_STANDEE_live2d_v4.webp",
     concerned: "assets/character/succubus_STANDEE_live2d_v4.webp",
     alluring: "assets/character/succubus_STANDEE_live2d_v4.webp",
-    bustEmphasis: "assets/character/succubus_EVENT_bust_emphasis_v1.png",
+    bustEmphasis: "assets/character/succubus_EVENT_bust_press_v2.png",
   };
 
   Object.values(ASSETS).forEach((src) => {
@@ -87,7 +87,9 @@
   const chapterGate = qs("#chapterGate");
   const mapScreen = qs("#mapScreen");
   const bossScreen = qs("#bossScreen");
+  const rewardScreen = qs("#rewardScreen");
   const resultScreen = qs("#resultScreen");
+  const bgm = qs("#bgm");
   let rigReady = false;
   const pendingRigState = {
     expression: "neutral",
@@ -272,11 +274,15 @@
     qs("#chapterGateKicker").textContent = question.seal;
     qs("#chapterGateTitle").textContent = question.title;
     qs("#chapterGateStatus").textContent = `${Object.keys(state.answers).length} / 4 SEALS RELEASED`;
+    const affection = Object.keys(state.answers).length;
+    qs("#affectionHearts").innerHTML = Array.from({ length: 4 }, (_, index) => (
+      `<span class="${index < affection ? "is-filled" : ""}">♥</span>`
+    )).join("");
     chapterGate.classList.add("is-active");
     chapterGate.setAttribute("aria-hidden", "false");
     playTone("seal");
     burst(16);
-    await sleep(reduceMotion.matches ? 90 : 1080);
+    await sleep(reduceMotion.matches ? 180 : 2100);
     chapterGate.classList.remove("is-active");
     chapterGate.setAttribute("aria-hidden", "true");
     await sleep(reduceMotion.matches ? 10 : 180);
@@ -329,13 +335,24 @@
     flash();
     playTone("clear");
     burst(34);
-    await sleep(reduceMotion.matches ? 80 : 900);
-    showResult();
+    await sleep(reduceMotion.matches ? 140 : 1200);
+    showReward();
+  }
+
+  function showReward() {
+    bossScreen.classList.remove("is-active");
+    bossScreen.setAttribute("aria-hidden", "true");
+    rewardScreen.classList.add("is-active");
+    rewardScreen.setAttribute("aria-hidden", "false");
+    playTone("clear");
+    qs("#rewardButton").focus();
   }
 
   function showResult() {
     bossScreen.classList.remove("is-active");
     bossScreen.setAttribute("aria-hidden", "true");
+    rewardScreen.classList.remove("is-active");
+    rewardScreen.setAttribute("aria-hidden", "true");
     resultScreen.classList.add("is-active");
     resultScreen.setAttribute("aria-hidden", "false");
 
@@ -363,6 +380,8 @@
     state.locked = false;
     resultScreen.classList.remove("is-active");
     resultScreen.setAttribute("aria-hidden", "true");
+    rewardScreen.classList.remove("is-active");
+    rewardScreen.setAttribute("aria-hidden", "true");
     bossScreen.classList.remove("is-active");
     qs("#bossFill").style.width = "100%";
     qs("#bossPercent").textContent = "100%";
@@ -433,12 +452,17 @@
   function toggleSound() {
     state.sound = !state.sound;
     const button = qs("#soundButton");
-    button.textContent = state.sound ? "♪" : "♪̸";
+    button.textContent = "♫";
+    button.classList.toggle("is-on", state.sound);
     button.setAttribute("aria-pressed", String(state.sound));
     button.setAttribute("aria-label", state.sound ? "サウンドをオフにする" : "サウンドをオンにする");
     if (state.sound) {
       ensureAudio()?.resume?.();
+      bgm.volume = 0.18;
+      bgm.play().catch(() => {});
       playTone("select");
+    } else {
+      bgm.pause();
     }
   }
 
@@ -515,7 +539,8 @@
 
   qs("#startButton").addEventListener("click", startExperience);
   qs("#soundButton").addEventListener("click", toggleSound);
-  qs("#ritualButton").addEventListener("click", defeatBoss, { once: true });
+  qs("#ritualButton").addEventListener("click", defeatBoss);
+  qs("#rewardButton").addEventListener("click", showResult);
   qs("#restartButton").addEventListener("click", resetExperience);
   window.addEventListener("resize", sizeCanvas, { passive: true });
 })();
