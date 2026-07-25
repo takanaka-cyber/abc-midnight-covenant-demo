@@ -496,6 +496,7 @@ a:focus-visible {
   filter:
     drop-shadow(-18px 12px 18px rgba(0, 0, 0, 0.82))
     drop-shadow(0 0 12px rgba(131, 37, 72, 0.15));
+  opacity: 0;
   transition: opacity 0.12s linear, filter 0.3s ease, transform 0.8s cubic-bezier(0.2, 0.82, 0.2, 1);
 }
 
@@ -1792,6 +1793,11 @@ a:focus-visible {
   width: 100%;
 }
 
+.primary-cta.is-disabled {
+  cursor: default;
+  pointer-events: none;
+}
+
 .restart-button {
   margin-top: 12px;
   border: 0;
@@ -1989,11 +1995,4 @@ a:focus-visible {
     display: none;
   }
 
-  .stage__rig {
-    display: none;
-  }
-
-  .stage.is-rig-ready .stage__character {
-    opacity: 1;
-  }
 }

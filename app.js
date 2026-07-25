@@ -103,7 +103,7 @@
     if (message?.type === "anime25d-expression") pendingRigState.expression = message.name;
     if (message?.type === "anime25d-talk") pendingRigState.talk = Boolean(message.active);
     if (message?.type === "anime25d-motion") pendingRigState.motion = message.name;
-    if (!rigReady || !characterRig?.contentWindow || reduceMotion.matches) return;
+    if (!rigReady || !characterRig?.contentWindow) return;
     characterRig.contentWindow.postMessage(message, window.location.origin);
     if (message?.type === "anime25d-motion") pendingRigState.motion = null;
   }
@@ -115,7 +115,7 @@
       || !event.data
     ) return;
 
-    if (event.data.type === "anime25d-ready" && !reduceMotion.matches) {
+    if (event.data.type === "anime25d-ready") {
       rigReady = true;
       stage.classList.add("is-rig-ready");
       postToRig({ type: "anime25d-fit" });
@@ -381,7 +381,7 @@
     `).join("");
 
     resultScreen.scrollTop = 0;
-    qs(".primary-cta").focus();
+    window.setTimeout(() => qs("#restartButton").focus(), 100);
   }
 
   function resetExperience() {
