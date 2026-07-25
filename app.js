@@ -12,6 +12,7 @@
     serious: "assets/character/succubus_STANDEE_live2d_v4.webp",
     concerned: "assets/character/succubus_STANDEE_live2d_v4.webp",
     alluring: "assets/character/succubus_STANDEE_live2d_v4.webp",
+    bustEmphasis: "assets/character/succubus_EVENT_bust_emphasis_v1.png",
   };
 
   Object.values(ASSETS).forEach((src) => {
@@ -27,7 +28,7 @@
       title: "秘密の輪郭",
       quest: "QUEST 01 / SECRET DESIRE",
       prompt: "いま、<em>いちばんほどきたい悩み</em>は？",
-      line: "正解を選ぶゲームじゃないわ。今のあなたに、一番近いものをひとつ。",
+      line: "誰にも言えなかったこと、ここでは隠さなくていいわ。<em>私にだけ、そっと教えて？</em>",
       expression: "neutral",
       options: ["包茎について", "長さについて", "太さについて", "早さについて", "まだ決めていない"],
     },
@@ -38,7 +39,7 @@
       title: "迷いの正体",
       quest: "QUEST 02 / DEBUFF SEARCH",
       prompt: "相談を止めている、<em>いちばん強い不安</em>は？",
-      line: "そこを隠す必要はないわ。迷いの形がわかれば、聞くべきことも見えてくる。",
+      line: "怖いままでもいいの。あなたを止めているもの、<em>私と一緒にひとつずつほどきましょう。</em>",
       expression: "concerned",
       options: ["痛みへの不安", "金額・条件", "周囲に知られる", "医師の技術", "まだ整理できていない"],
     },
@@ -49,7 +50,7 @@
       title: "必要な情報",
       quest: "QUEST 03 / SKILL SELECT",
       prompt: "相談前に、<em>最優先で確かめたいこと</em>は？",
-      line: "いい選び方ね。契約より先に、条件を確かめる。それがあなたの武器になる。",
+      line: "もう半分まで来たわ。次は安心して踏み出すために、<em>私と確かめたいことを選んで？</em>",
       expression: "smile",
       options: ["治療の時間・流れ", "痛みへの配慮", "費用・支払い条件", "プライバシー・担当者", "まず全体を聞きたい"],
     },
@@ -60,7 +61,7 @@
       title: "望むルート",
       quest: "QUEST 04 / ENDING ROUTE",
       prompt: "悩みを整理した先で、<em>どう過ごせたら嬉しい</em>？",
-      line: "最後は、治療名じゃなくて望む未来を選んで。あなたの契約は、あなたのためのものよ。",
+      line: "あと一枚で契約は完成。悩みを手放したあなたが、<em>私にどんな顔を見せてくれるのかしら？</em>",
       expression: "alluring",
       options: ["自分に自信を持つ", "温泉・サウナを楽しむ", "パートナーとの不安を減らす", "普段から気にせず過ごす", "まだ決めていない"],
     },
@@ -80,6 +81,7 @@
   const dialogueText = qs("#dialogueText");
   const character = qs("#character");
   const characterRig = qs("#characterRig");
+  const eventPose = qs("#eventPose");
   const stage = qs("#stage");
   const chapterLabel = qs("#chapterLabel");
   const chapterGate = qs("#chapterGate");
@@ -190,6 +192,16 @@
     });
   }
 
+  function playEventPose() {
+    if (!eventPose?.complete || !eventPose.naturalWidth) return;
+    stage.classList.remove("is-event-pose");
+    void stage.offsetWidth;
+    stage.classList.add("is-event-pose");
+    window.setTimeout(() => {
+      stage.classList.remove("is-event-pose");
+    }, reduceMotion.matches ? 500 : 3000);
+  }
+
   function renderQuestion() {
     const question = QUESTIONS[state.index];
     if (!question) {
@@ -199,9 +211,14 @@
 
     state.locked = false;
     chapterLabel.textContent = question.chapter;
+    stage.dataset.phase = String(state.index + 1);
     setExpression(question.expression);
+    if (question.expression === "smile") {
+      postToRig({ type: "anime25d-motion", name: "closer" });
+    }
     if (question.expression === "alluring") {
-      postToRig({ type: "anime25d-motion", name: "invite" });
+      postToRig({ type: "anime25d-motion", name: "tempt" });
+      playEventPose();
     }
     typeDialogue(question.line);
 
@@ -269,7 +286,8 @@
     updateProgress();
     mapScreen.classList.add("is-active");
     mapScreen.setAttribute("aria-hidden", "false");
-    await sleep(reduceMotion.matches ? 120 : 1450);
+    playTone("clear");
+    await sleep(reduceMotion.matches ? 160 : 2400);
     mapScreen.classList.remove("is-active");
     mapScreen.setAttribute("aria-hidden", "true");
     await sleep(reduceMotion.matches ? 10 : 180);

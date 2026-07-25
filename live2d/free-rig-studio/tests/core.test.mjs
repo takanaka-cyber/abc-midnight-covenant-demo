@@ -646,3 +646,30 @@ test('drives a full-body invite gesture including post-physics appendages', () =
   assert.ok(peaks.ArmSwing > 0.09);
   assert.equal(runtime.getDiagnostics().gesture, null);
 });
+
+test('drives a chest-emphasis temptation pose without exceeding parameter bounds', () => {
+  const runtime = Core.createPerformanceRuntime({
+    neutral: { mouthOpen: 0 }
+  }, 654);
+  runtime.triggerGesture('tempt');
+  const peaks = {
+    Bust: 0,
+    BustSqueeze: 0,
+    ArmSwing: 0,
+    WingSwing: 0,
+    TailCurl: 0
+  };
+  for (let index = 0; index < 170; index += 1) {
+    const frame = runtime.step(1 / 60, 1);
+    Object.keys(peaks).forEach((key) => {
+      peaks[key] = Math.max(peaks[key], Math.abs(frame.offsets[key]));
+    });
+    assert.ok(frame.offsets.BustSqueeze >= 0 && frame.offsets.BustSqueeze <= 1);
+  }
+  assert.ok(peaks.Bust > 0.4);
+  assert.ok(peaks.BustSqueeze > 0.8);
+  assert.ok(peaks.ArmSwing > 0.2);
+  assert.ok(peaks.WingSwing > 0.25);
+  assert.ok(peaks.TailCurl > 0.25);
+  assert.equal(runtime.getDiagnostics().gesture, null);
+});

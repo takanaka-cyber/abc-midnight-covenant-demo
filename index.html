@@ -112,6 +112,19 @@
           tabindex="-1"
           aria-hidden="true"
         ></iframe>
+        <img
+          class="stage__event-pose"
+          id="eventPose"
+          src="assets/character/succubus_EVENT_bust_emphasis_v1.png"
+          alt=""
+          width="880"
+          height="1768"
+          aria-hidden="true"
+        >
+        <div class="stage__event-caption" aria-hidden="true">
+          <small>ROUTE IV / EVENT CG</small>
+          <strong>誘惑の契約</strong>
+        </div>
         <div class="stage__floor-glow" aria-hidden="true"></div>
       </div>
 
@@ -135,10 +148,16 @@
       <img src="assets/world/quest-map.webp" alt="" width="941" height="1672">
       <div class="map-screen__scrim"></div>
       <div class="map-screen__content">
-        <p class="eyebrow">CONTRACT MAP</p>
-        <h2>契約は、半分まで進んだ。</h2>
+        <p class="eyebrow">CONTRACT CHECKPOINT</p>
+        <div class="map-progress" aria-label="契約進行率50パーセント">
+          <span class="map-progress__halo"></span>
+          <strong>50</strong><small>%</small>
+        </div>
+        <p class="map-screen__status">2 / 4 SEALS RELEASED</p>
+        <h2>あなたの迷いは、<br><em>もう半分ほどけた。</em></h2>
         <div class="map-nodes" id="mapNodes" aria-label="クエスト進行状況"></div>
-        <p>残る封印はあと2つ。<br>焦らなくていい。選ぶのは、あなたよ。</p>
+        <div class="map-meter" aria-hidden="true"><span></span></div>
+        <p>隠していたことの半分を、もう私に預けてくれたのね。<br><em>残りも、焦らず聞かせて？</em></p>
       </div>
     </section>
 

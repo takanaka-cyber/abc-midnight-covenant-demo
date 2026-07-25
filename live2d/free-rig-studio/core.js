@@ -816,6 +816,8 @@
         BodyAngleZ: 0,
         ShoulderMotion: 0,
         HipShift: 0,
+        Bust: 0,
+        BustSqueeze: 0,
         WingSwing: 0,
         WingFlap: 0,
         TailSwing: 0,
@@ -853,6 +855,40 @@
         result.CloakFlutter = flourish * 0.12;
         result.ArmSwing = rise * 0.12;
         result.ArmFollow = flourish * 0.08;
+      } else if (gestureName === 'closer') {
+        progress = clamp(gestureTime / 1.65, 0, 1);
+        var closerRise = Math.sin(progress * Math.PI);
+        result.AngleX = closerRise * 0.1;
+        result.AngleZ = closerRise * -0.2;
+        result.BodyAngleX = closerRise * 0.18;
+        result.BodyAngleZ = closerRise * 0.12;
+        result.ShoulderMotion = closerRise * 0.12;
+        result.HipShift = closerRise * -0.08;
+        result.Bust = Math.sin(progress * Math.PI * 2) * 0.22;
+        result.BustSqueeze = closerRise * 0.48;
+        result.ArmSwing = closerRise * -0.12;
+        result.WingSwing = closerRise * 0.12;
+      } else if (gestureName === 'tempt') {
+        progress = clamp(gestureTime / 2.5, 0, 1);
+        var temptRise = Math.sin(progress * Math.PI);
+        var temptPulse = Math.sin(progress * Math.PI * 3);
+        result.AngleX = temptRise * 0.13;
+        result.AngleZ = temptRise * 0.42;
+        result.BodyAngleX = temptRise * 0.24;
+        result.BodyAngleY = temptPulse * 0.08;
+        result.BodyAngleZ = temptRise * -0.24;
+        result.ShoulderMotion = temptRise * 0.2;
+        result.HipShift = temptRise * 0.16;
+        result.Bust = temptPulse * 0.38 + temptRise * 0.18;
+        result.BustSqueeze = temptRise * 0.88;
+        result.ArmSwing = temptRise * -0.26;
+        result.ArmFollow = temptRise * -0.14;
+        result.WingSwing = temptRise * 0.3;
+        result.WingFlap = temptPulse * 0.18;
+        result.TailSwing = Math.sin(progress * Math.PI * 1.5) * 0.28;
+        result.TailCurl = temptRise * 0.3;
+        result.CloakSwing = temptRise * -0.2;
+        result.CloakFlutter = temptPulse * 0.14;
       } else {
         progress = 1;
       }

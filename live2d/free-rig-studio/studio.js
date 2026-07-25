@@ -577,30 +577,40 @@
       chestY,
       chestWidth,
       chestHeight,
-      3,
+      5,
       3,
       {
         Bust: binding([-1, 0, 1], [
           {
-            warpOffsets: gridOffsets(3, 3, function (x, y) {
+            warpOffsets: gridOffsets(5, 3, function (x, y) {
               var edgeLock = Math.pow(Math.sin(Math.PI * x) * Math.sin(Math.PI * y), 2);
               var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.8);
               return [(x - 0.5) * center * edgeLock * -2.5, center * edgeLock * -6.5];
             })
           },
-          { warpOffsets: zeroGrid(3, 3) },
+          { warpOffsets: zeroGrid(5, 3) },
           {
-            warpOffsets: gridOffsets(3, 3, function (x, y) {
+            warpOffsets: gridOffsets(5, 3, function (x, y) {
               var edgeLock = Math.pow(Math.sin(Math.PI * x) * Math.sin(Math.PI * y), 2);
               var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.8);
               return [(x - 0.5) * center * edgeLock * 2.8, center * edgeLock * 7.5];
             })
           }
         ]),
-        Breath: binding([0, 1], [
-          { warpOffsets: zeroGrid(3, 3) },
+        BustSqueeze: binding([0, 1], [
+          { warpOffsets: zeroGrid(5, 3) },
           {
-            warpOffsets: gridOffsets(3, 3, function (x, y) {
+            warpOffsets: gridOffsets(5, 3, function (x, y) {
+              var edgeLock = Math.pow(Math.sin(Math.PI * x) * Math.sin(Math.PI * y), 2);
+              var towardCenter = x < 0.5 ? 1 : (x > 0.5 ? -1 : 0);
+              return [towardCenter * edgeLock * 8.5, -edgeLock * 5.2];
+            })
+          }
+        ]),
+        Breath: binding([0, 1], [
+          { warpOffsets: zeroGrid(5, 3) },
+          {
+            warpOffsets: gridOffsets(5, 3, function (x, y) {
               var edgeLock = Math.pow(Math.sin(Math.PI * x) * Math.sin(Math.PI * y), 2);
               var center = Math.max(0, 1 - Math.abs(x - 0.5) * 1.8);
               return [(x - 0.5) * center * edgeLock * 2.4, center * edgeLock * -2.8];
@@ -1233,6 +1243,7 @@
           id: 'Bust', name: 'Bust spring', min: -1, max: 1, default: 0,
           standard: { id: 'ParamBustY', min: -1, default: 0, max: 1, scale: 1 }
         },
+        { id: 'BustSqueeze', name: 'Bust inward emphasis', min: 0, max: 1, default: 0 },
         {
           id: 'HairSwing', name: 'Hair swing', min: -1, max: 1, default: 0,
           standard: { id: 'ParamHairFront', min: -1, default: 0, max: 1, scale: 1 }
@@ -3345,6 +3356,8 @@
           Number(embeddedExpression.poseBodyZ || 0)
       });
       var postPhysicsIds = {
+        Bust: true,
+        BustSqueeze: true,
         WingSwing: true,
         WingFlap: true,
         TailSwing: true,
