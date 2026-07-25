@@ -1557,6 +1557,10 @@ a:focus-visible {
   font-style: normal;
 }
 
+.reward-copy__no-break {
+  white-space: nowrap;
+}
+
 .reward-screen__content > p:not(.eyebrow) {
   margin: 0 0 12px;
   color: #d5c3b4;
