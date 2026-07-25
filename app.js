@@ -89,7 +89,9 @@
   const bossScreen = qs("#bossScreen");
   const rewardScreen = qs("#rewardScreen");
   const resultScreen = qs("#resultScreen");
+  const rewardButton = qs("#rewardButton");
   const bgm = qs("#bgm");
+  let rewardRevealTimer = 0;
   let rigReady = false;
   const pendingRigState = {
     expression: "neutral",
@@ -342,10 +344,18 @@
   function showReward() {
     bossScreen.classList.remove("is-active");
     bossScreen.setAttribute("aria-hidden", "true");
+    window.clearTimeout(rewardRevealTimer);
+    rewardButton.disabled = true;
     rewardScreen.classList.add("is-active");
     rewardScreen.setAttribute("aria-hidden", "false");
     playTone("clear");
-    qs("#rewardButton").focus();
+    burst(64);
+    rewardRevealTimer = window.setTimeout(() => {
+      rewardButton.disabled = false;
+      rewardButton.focus();
+      playTone("seal");
+      burst(42);
+    }, reduceMotion.matches ? 0 : 2850);
   }
 
   function showResult() {
@@ -375,6 +385,8 @@
   }
 
   function resetExperience() {
+    window.clearTimeout(rewardRevealTimer);
+    rewardButton.disabled = false;
     state.index = 0;
     state.answers = {};
     state.locked = false;
@@ -540,7 +552,7 @@
   qs("#startButton").addEventListener("click", startExperience);
   qs("#soundButton").addEventListener("click", toggleSound);
   qs("#ritualButton").addEventListener("click", defeatBoss);
-  qs("#rewardButton").addEventListener("click", showResult);
+  rewardButton.addEventListener("click", showResult);
   qs("#restartButton").addEventListener("click", resetExperience);
   window.addEventListener("resize", sizeCanvas, { passive: true });
 })();

@@ -1360,7 +1360,11 @@ a:focus-visible {
 }
 
 .reward-screen__art,
-.reward-screen__veil {
+.reward-screen__veil,
+.reward-reveal,
+.reward-reveal__darkness,
+.reward-reveal__rays,
+.reward-reveal__halo {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1368,6 +1372,7 @@ a:focus-visible {
 }
 
 .reward-screen__art {
+  z-index: 0;
   object-fit: cover;
   object-position: 50% 12%;
   filter: brightness(0.88) saturate(1.06);
@@ -1375,14 +1380,163 @@ a:focus-visible {
 }
 
 .reward-screen__veil {
+  z-index: 1;
   background:
     linear-gradient(180deg, rgba(4, 2, 3, 0.02) 35%, rgba(6, 3, 4, 0.32) 55%, rgba(6, 3, 4, 0.96) 78%),
     radial-gradient(circle at 50% 32%, transparent 20%, rgba(3, 2, 3, 0.34) 82%);
 }
 
-.reward-screen__content {
+.reward-reveal {
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.reward-reveal__darkness {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(79, 12, 41, 0.34), transparent 22%),
+    #030203;
+}
+
+.reward-reveal__rays {
+  top: -24%;
+  left: -55%;
+  width: 210%;
+  height: 138%;
+  background: repeating-conic-gradient(
+    from 4deg at 50% 48%,
+    rgba(255, 230, 159, 0) 0deg 7deg,
+    rgba(255, 220, 130, 0.5) 8deg 10deg,
+    rgba(255, 230, 159, 0) 11deg 20deg
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+}
+
+.reward-reveal__halo {
+  inset: 6% -35% auto;
+  width: 170%;
+  height: 67%;
+  border: 1px solid rgba(255, 233, 176, 0.8);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 20%, rgba(255, 236, 179, 0.2) 21%, transparent 23%),
+    radial-gradient(circle, rgba(255, 243, 205, 0.88) 0, rgba(224, 107, 151, 0.24) 24%, transparent 59%);
+  box-shadow:
+    inset 0 0 50px rgba(255, 230, 161, 0.48),
+    0 0 55px rgba(255, 216, 126, 0.72),
+    0 0 110px rgba(224, 72, 135, 0.52);
+  opacity: 0;
+}
+
+.reward-reveal__seal {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  width: 126px;
+  height: 126px;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+.reward-reveal__seal::before,
+.reward-reveal__seal::after,
+.reward-reveal__seal-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 225, 145, 0.9);
+  box-shadow:
+    inset 0 0 18px rgba(255, 223, 142, 0.3),
+    0 0 18px rgba(255, 211, 111, 0.65);
+  content: "";
+}
+
+.reward-reveal__seal::before {
+  transform: rotate(45deg);
+}
+
+.reward-reveal__seal::after {
+  inset: 17px;
+  transform: rotate(22.5deg);
+}
+
+.reward-reveal__seal-ring {
+  inset: -20px;
+  border-style: double;
+  border-radius: 50%;
+}
+
+.reward-reveal__seal-core {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  color: #fff5d5;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 28px;
+  text-shadow: 0 0 12px #fff, 0 0 26px #f3bd55;
+  transform: translate(-50%, -50%);
+}
+
+.reward-reveal__rarity {
   position: absolute;
   z-index: 2;
+  top: 22%;
+  left: 50%;
+  width: 100%;
+  color: #fff7dd;
+  text-align: center;
+  text-shadow: 0 2px 4px #2d0718, 0 0 18px rgba(255, 211, 114, 0.9);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+.reward-reveal__rarity-kicker,
+.reward-reveal__rarity-name {
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+}
+
+.reward-reveal__rarity strong {
+  display: block;
+  margin: -8px 0 -5px;
+  background: linear-gradient(180deg, #fffef2 5%, #fbe092 36%, #e38bba 72%, #8c2756 100%);
+  background-clip: text;
+  color: transparent;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 82px;
+  font-style: italic;
+  line-height: 1;
+  -webkit-background-clip: text;
+  -webkit-text-stroke: 1px rgba(255, 245, 201, 0.9);
+  filter: drop-shadow(0 0 12px rgba(255, 226, 140, 0.9));
+}
+
+.reward-reveal__clear {
+  position: absolute;
+  z-index: 4;
+  top: 61%;
+  left: 50%;
+  width: 120%;
+  padding: 7px 0;
+  border-top: 1px solid rgba(255, 230, 164, 0.72);
+  border-bottom: 1px solid rgba(255, 230, 164, 0.72);
+  background: linear-gradient(90deg, transparent, rgba(68, 7, 33, 0.9) 22%, rgba(110, 22, 55, 0.92) 50%, rgba(68, 7, 33, 0.9) 78%, transparent);
+  color: #fff2c9;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  text-align: center;
+  text-shadow: 0 0 10px #ffce72;
+  transform: translate(-50%, -50%) scaleX(0);
+  opacity: 0;
+}
+
+.reward-screen__content {
+  position: absolute;
+  z-index: 5;
   right: 20px;
   bottom: calc(24px + var(--safe-bottom));
   left: 20px;
@@ -1416,21 +1570,101 @@ a:focus-visible {
   margin-inline: auto;
 }
 
+.reward-button:disabled {
+  pointer-events: none;
+}
+
 .reward-screen.is-active .reward-screen__art {
-  animation: rewardArtIn 6s ease-out both;
+  animation: rewardArtIn 6.4s cubic-bezier(.16,.84,.28,1) both;
+}
+
+.reward-screen.is-active .reward-reveal__darkness {
+  animation: rewardDarkness 2.75s ease both;
+}
+
+.reward-screen.is-active .reward-reveal__rays {
+  animation: rewardRays 2.65s cubic-bezier(.16,.84,.28,1) both;
+}
+
+.reward-screen.is-active .reward-reveal__halo {
+  animation: rewardHalo 2.8s cubic-bezier(.16,.84,.28,1) both;
+}
+
+.reward-screen.is-active .reward-reveal__seal {
+  animation: rewardSeal 1.7s 0.22s cubic-bezier(.16,.84,.28,1) both;
+}
+
+.reward-screen.is-active .reward-reveal__seal-ring {
+  animation: rewardSealSpin 2.2s 0.22s cubic-bezier(.16,.84,.28,1) both;
+}
+
+.reward-screen.is-active .reward-reveal__rarity {
+  animation: rewardRarity 1.35s 1.05s cubic-bezier(.16,.84,.28,1) both;
+}
+
+.reward-screen.is-active .reward-reveal__clear {
+  animation: rewardClear 1.05s 1.82s cubic-bezier(.16,.84,.28,1) both;
 }
 
 .reward-screen.is-active .reward-screen__content {
-  animation: rewardCopyIn 1s 0.5s ease both;
+  animation: rewardCopyIn 1s 2.55s cubic-bezier(.16,.84,.28,1) both;
 }
 
 @keyframes rewardArtIn {
-  from { opacity: 0; transform: scale(1.08); filter: brightness(1.6) saturate(0.8); }
-  to { opacity: 1; transform: scale(1.015); filter: brightness(0.88) saturate(1.06); }
+  0%, 20% { opacity: 0.18; transform: scale(1.12); filter: brightness(0.22) saturate(0.65) blur(5px); }
+  31% { opacity: 1; filter: brightness(1.35) saturate(0.96) blur(0.4px); }
+  43% { transform: scale(1.045); filter: brightness(1.06) saturate(1.18); }
+  100% { opacity: 1; transform: scale(1.015); filter: brightness(0.88) saturate(1.06); }
+}
+
+@keyframes rewardDarkness {
+  0%, 22% { opacity: 1; }
+  38% { opacity: 0.2; }
+  58%, 100% { opacity: 0; }
+}
+
+@keyframes rewardRays {
+  0%, 24% { opacity: 0; transform: rotate(-12deg) scale(0.38); }
+  35% { opacity: 0.95; }
+  62% { opacity: 0.35; transform: rotate(12deg) scale(1); }
+  100% { opacity: 0; transform: rotate(18deg) scale(1.18); }
+}
+
+@keyframes rewardHalo {
+  0%, 22% { opacity: 0; transform: scale(0.12); }
+  34% { opacity: 1; }
+  58% { opacity: 0.36; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.28); }
+}
+
+@keyframes rewardSeal {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2.2) rotate(-20deg); filter: blur(5px); }
+  24% { opacity: 1; }
+  68% { opacity: 1; transform: translate(-50%, -50%) scale(0.82) rotate(0); filter: blur(0); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.05) rotate(18deg); }
+}
+
+@keyframes rewardSealSpin {
+  from { transform: rotate(-120deg); }
+  to { transform: rotate(180deg); }
+}
+
+@keyframes rewardRarity {
+  0% { opacity: 0; transform: translate(-50%, -42%) scale(1.8); filter: blur(8px); }
+  28% { opacity: 1; }
+  56% { transform: translate(-50%, -50%) scale(0.94); filter: blur(0); }
+  72% { transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -55%) scale(1.03); }
+}
+
+@keyframes rewardClear {
+  0% { opacity: 0; transform: translate(-50%, -50%) scaleX(0); }
+  32%, 72% { opacity: 1; transform: translate(-50%, -50%) scaleX(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scaleX(1.08); }
 }
 
 @keyframes rewardCopyIn {
-  from { opacity: 0; transform: translateY(18px); }
+  from { opacity: 0; transform: translateY(26px) scale(0.97); filter: blur(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
